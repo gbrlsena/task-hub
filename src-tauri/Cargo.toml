@@ -1,0 +1,44 @@
+[package]
+name = "task-hub"
+version = "0.1.0"
+description = "Task Hub - notas autoadesivas com integracao ClickUp"
+authors = ["Gabriel Sena"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "task_hub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTP feito no lado Rust (regra dura do spec: nenhuma chamada HTTP direto do frontend).
+# native-tls usa a stack TLS do SO: SChannel no Windows (sem deps extras) e
+# OpenSSL no Linux (Mint precisa de libssl-dev instalado para buildar).
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+
+# keyring 3.x exige habilitar o backend por plataforma explicitamente.
+# Windows (maquina de build atual): Credential Manager nativo.
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+# Linux Mint (alvo primario): Secret Service (GNOME Keyring), com cripto em Rust
+# para nao arrastar dependencia de OpenSSL. Persiste entre reboots, ao contrario
+# do keyutils do kernel.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+# macOS nao e alvo, mas mantem o crate compilavel caso alguem abra em Mac.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
