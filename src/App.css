@@ -257,6 +257,184 @@ button.link {
   font-family: ui-monospace, "Cascadia Code", monospace;
 }
 
+/* Navegação de sprint */
+.sprint-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  border-bottom: 1px solid #2a2a32;
+}
+
+.nav-arrow {
+  flex: none;
+  width: 34px;
+  padding: 4px 0;
+  font-size: 18px;
+  background: #2a2a32;
+}
+
+.nav-arrow:disabled {
+  opacity: 0.35;
+}
+
+.sprint-nav-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.sprint-title {
+  font-weight: 700;
+}
+
+/* Pills */
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.status-pill {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: #2f2f3a;
+  color: #cfcfe0;
+}
+
+/* Papéis de cor do status (§1.3) */
+.role-danger {
+  background: #4a1f24;
+  color: #ff8f9a;
+}
+.role-accent {
+  background: #1f2b4a;
+  color: #9db4ff;
+}
+.role-warning {
+  background: #4a3a1f;
+  color: #ffcf8f;
+}
+.role-neutral {
+  background: #2f2f3a;
+  color: #cfcfe0;
+}
+
+.prio-urgent {
+  background: #4a1f24;
+  color: #ff8f9a;
+}
+.prio-high {
+  background: #4a331f;
+  color: #ffc08f;
+}
+.pill-late {
+  background: #4a1f24;
+  color: #ff8f9a;
+}
+.pill-reminder {
+  background: #3a2f4a;
+  color: #d3b4ff;
+}
+
+/* Ações e subtasks */
+.task-actions {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+}
+
+.subtask-list {
+  margin-top: 6px;
+  border-left: 2px solid #2a2a32;
+  padding-left: 6px;
+}
+
+/* Painel de anotações */
+.notes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #17171c;
+}
+
+.note-add input,
+.reminder-add input {
+  font-size: 13px;
+}
+
+.reminder-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reminder-add input[type="datetime-local"] {
+  width: auto;
+}
+
+.comment-list,
+.reminder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment {
+  background: #1f1f26;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.comment-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.reminder {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #1f1f26;
+}
+
+.reminder.due {
+  background: #3a2f4a;
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+button.link.danger {
+  color: #ff8f9a;
+}
+
 .app-footer {
   margin-top: auto;
 }

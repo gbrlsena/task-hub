@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupBySprint, parseListMeta } from "./sprint";
+import { groupBySprint, parseListMeta, pickCurrentGroupIndex } from "./sprint";
 
 // Datas de referência fixas para tornar a inferência de ano determinística.
 const JUL_28_2026 = new Date(2026, 6, 28);
@@ -67,5 +67,23 @@ describe("groupBySprint", () => {
     expect(groups.map((g) => g.title)).toEqual(["Sprint 8", "Sprint 4", "Backlog"]);
     // Sprint 4 acumulou as duas tasks da mesma lista.
     expect(groups[1].tasks.map((x) => x.id)).toEqual(["a", "d"]);
+  });
+});
+
+describe("pickCurrentGroupIndex", () => {
+  const t = (list_name: string, id: string) => ({ list_name, id });
+  const items = [
+    t("Revenue Sprint 8 (7/21 - 8/3)", "a"),
+    t("Revenue Sprint 7 (7/14 - 7/20)", "b"),
+  ];
+  const groups = groupBySprint(items, JUL_28_2026); // [Sprint 8, Sprint 7]
+
+  it("escolhe a sprint cujo range engloba hoje", () => {
+    expect(pickCurrentGroupIndex(groups, new Date(2026, 6, 28))).toBe(0); // dentro da 8
+    expect(pickCurrentGroupIndex(groups, new Date(2026, 6, 16))).toBe(1); // dentro da 7
+  });
+
+  it("cai no primeiro (mais recente) quando nenhuma engloba hoje", () => {
+    expect(pickCurrentGroupIndex(groups, new Date(2026, 0, 1))).toBe(0);
   });
 });

@@ -74,3 +74,19 @@ export function groupBySprint<T extends { list_name: string }>(
 
   return [...groups.values()].sort((a, b) => sprintNumber(b) - sprintNumber(a));
 }
+
+/**
+ * Índice do grupo "atual": a sprint cujo range engloba `now`. Se nenhuma
+ * engloba, cai no primeiro grupo (o de maior número, pela ordenação). Retorna
+ * 0 para lista vazia (o chamador trata o caso sem grupos).
+ */
+export function pickCurrentGroupIndex<T>(groups: SprintGroup<T>[], now: Date = new Date()): number {
+  const t = now.getTime();
+  const idx = groups.findIndex(
+    (g) =>
+      g.meta.kind === "sprint" &&
+      g.meta.startsAt.getTime() <= t &&
+      t <= g.meta.endsAt.getTime() + 24 * 60 * 60 * 1000 - 1,
+  );
+  return idx >= 0 ? idx : 0;
+}

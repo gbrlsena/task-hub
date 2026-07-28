@@ -10,18 +10,20 @@ import {
 import {
   cacheTasks,
   clearTasks,
+  dueReminderSubjectIds,
   getCachedTasks,
   lastFetchedAt,
   pruneStale,
   TASK_TTL_MS,
   type CachedTask,
 } from "./db";
-import { groupBySprint } from "./sprint";
+import { groupBySprint, pickCurrentGroupIndex } from "./sprint";
+import { buildTaskTree } from "./task";
+import TaskCard from "./TaskCard";
 import "./App.css";
 
 type Screen = { kind: "loading" } | { kind: "token" } | { kind: "board" };
 
-// Board inicial (folder "Revenue Sprints"); trocável e persistido em localStorage.
 const DEFAULT_FOLDER_ID = "90118026854";
 const FOLDER_KEY = "taskhub.folderId";
 
@@ -62,8 +64,30 @@ function App() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [dueIds, setDueIds] = useState<Set<string>>(new Set());
+
+  // Navegação de sprint
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const groups = useMemo(() => groupBySprint(tasks), [tasks]);
+
+  const currentIndex = useMemo(() => {
+    if (groups.length === 0) return -1;
+    const i = selectedKey ? groups.findIndex((g) => g.key === selectedKey) : -1;
+    return i >= 0 ? i : pickCurrentGroupIndex(groups);
+  }, [groups, selectedKey]);
+
+  const current = currentIndex >= 0 ? groups[currentIndex] : null;
+
+  const tree = useMemo(
+    () => buildTaskTree(current ? current.tasks : []),
+    [current],
+  );
+  const getChildren = (id: string) => tree.childrenByParent.get(id) ?? [];
+
+  async function reloadDue() {
+    setDueIds(await dueReminderSubjectIds(Date.now()));
+  }
 
   // Tela inicial: existe token salvo?
   useEffect(() => {
@@ -72,7 +96,7 @@ function App() {
       .catch(() => setScreen({ kind: "token" }));
   }, []);
 
-  // Ao entrar no board (ou trocar de folder): resolve o nome e carrega o cache.
+  // Ao entrar no board (ou trocar de folder): nome do folder + cache + lembretes.
   useEffect(() => {
     if (screen.kind !== "board") return;
     let alive = true;
@@ -81,11 +105,12 @@ function App() {
       .then((f) => alive && setFolder(f))
       .catch(() => alive && setFolder(null));
 
-    Promise.all([getCachedTasks(), lastFetchedAt()])
-      .then(([rows, last]) => {
+    Promise.all([getCachedTasks(), lastFetchedAt(), dueReminderSubjectIds(Date.now())])
+      .then(([rows, last, due]) => {
         if (!alive) return;
         setTasks(rows);
         setLastSync(last);
+        setDueIds(due);
       })
       .catch(() => {});
 
@@ -97,6 +122,7 @@ function App() {
   async function reloadCache() {
     setTasks(await getCachedTasks());
     setLastSync(await lastFetchedAt());
+    await reloadDue();
   }
 
   async function handleSync() {
@@ -127,7 +153,7 @@ function App() {
     setEditingBoard(false);
     setFolderInput("");
     setFolder(null);
-    // Escopo mudou: limpa o cache do board anterior.
+    setSelectedKey(null);
     await clearTasks();
     setTasks([]);
     setLastSync(null);
@@ -243,32 +269,51 @@ function App() {
         <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
       )}
 
-      {groups.map((g) => (
-        <section key={g.key} className="sprint-group">
-          <header className="sprint-header">
-            <span className="sprint-title">{g.title}</span>
-            {g.meta.kind === "sprint" && (
+      {current && (
+        <>
+          <nav className="sprint-nav">
+            <button
+              className="nav-arrow"
+              disabled={currentIndex <= 0}
+              onClick={() => setSelectedKey(groups[currentIndex - 1].key)}
+              aria-label="Sprint anterior"
+            >
+              ‹
+            </button>
+            <div className="sprint-nav-label">
+              <span className="sprint-title">{current.title}</span>
+              {current.meta.kind === "sprint" && (
+                <span className="muted">
+                  {fmtDM(current.meta.startsAt)}–{fmtDM(current.meta.endsAt)}
+                </span>
+              )}
               <span className="muted">
-                {fmtDM(g.meta.startsAt)}–{fmtDM(g.meta.endsAt)}
+                {current.tasks.length} tasks · {currentIndex + 1}/{groups.length}
               </span>
-            )}
-            <span className="sprint-count muted">{g.tasks.length}</span>
-          </header>
+            </div>
+            <button
+              className="nav-arrow"
+              disabled={currentIndex >= groups.length - 1}
+              onClick={() => setSelectedKey(groups[currentIndex + 1].key)}
+              aria-label="Próxima sprint"
+            >
+              ›
+            </button>
+          </nav>
+
           <ul className="task-list">
-            {g.tasks.map((t) => (
-              <li key={t.id} className="task-card">
-                <div className="task-main">
-                  <span className="task-name">{t.name}</span>
-                  <span className="status-pill">{t.status || "—"}</span>
-                </div>
-                <div className="task-meta muted">
-                  {t.custom_id ?? t.id} · {t.list_name}
-                </div>
-              </li>
+            {tree.roots.map((t) => (
+              <TaskCard
+                key={t.id}
+                task={t}
+                getChildren={getChildren}
+                dueIds={dueIds}
+                onRemindersChanged={reloadDue}
+              />
             ))}
           </ul>
-        </section>
-      ))}
+        </>
+      )}
 
       <footer className="app-footer">
         <button className="link" onClick={handleChangeToken}>

@@ -27,9 +27,20 @@ Stack: Tauri 2 · React 18 + TypeScript + Vite · keyring nativo · `reqwest` no
 - Parser de sprint (`src/sprint.ts`) com testes cobrindo nome fora do padrão e
   virada de ano (`src/sprint.test.ts`, vitest).
 
+**Navegação + anotações** (ver
+[design](docs/superpowers/specs/2026-07-28-navegacao-sprint-subtasks-anotacoes-design.md)):
+- Board = folder do ClickUp, escopável por URL/id (`get_folder`, sync por
+  `list_ids[]` do folder).
+- Navegação por sprint com setas ‹ ›, uma sprint por vez, default na sprint atual.
+- Tasks com subtasks aninhadas expansíveis (campo `parent` no sync); pills de
+  status (cor via §1.3), prioridade (urgent/high) e atraso — `src/task.ts`.
+- Camada privada local (nunca vai pro ClickUp): comentários datados + lembretes
+  com badge quando vencido, por task — `src/TaskCard.tsx`, tabelas `comment` e
+  `reminder` (`migrations/0002_notes.sql`).
+
 Commands expostos ao frontend (`src/api.ts`):
 `token_status`, `save_clickup_token`, `clear_clickup_token`, `get_teams`,
-`sync_open_tasks`.
+`get_folder`, `sync_open_tasks`.
 
 ## Pré-requisitos
 

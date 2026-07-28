@@ -91,6 +91,8 @@ pub struct TaskDto {
     pub list_id: String,
     pub list_name: String,
     pub due_date: Option<i64>,
+    /// Id da task pai quando esta e uma subtask; None no topo.
+    pub parent: Option<String>,
     pub assignees: Vec<i64>,
     pub raw: String,
 }
@@ -120,6 +122,7 @@ fn parse_task(t: &serde_json::Value) -> Option<TaskDto> {
         list_id: t["list"]["id"].as_str().unwrap_or("").to_string(),
         list_name: t["list"]["name"].as_str().unwrap_or("").to_string(),
         due_date: str_to_i64(&t["due_date"]),
+        parent: t["parent"].as_str().map(str::to_string),
         assignees,
         raw: t.to_string(),
     })
@@ -333,6 +336,7 @@ mod tests {
               "priority": { "id": "2", "priority": "high" },
               "due_date": "1690000000000",
               "list": { "id": "901114167268", "name": "Revenue Sprint 8 (7/21 - 8/3)" },
+              "parent": "parent999",
               "assignees": [ { "id": 87383082 }, { "id": 99 } ]
             }"#,
         )
@@ -345,6 +349,7 @@ mod tests {
         assert_eq!(dto.priority, Some(2));
         assert_eq!(dto.due_date, Some(1690000000000));
         assert_eq!(dto.list_id, "901114167268");
+        assert_eq!(dto.parent.as_deref(), Some("parent999"));
         assert_eq!(dto.assignees, vec![87383082, 99]);
     }
 
@@ -366,6 +371,7 @@ mod tests {
         let dto = super::parse_task(&t).expect("deve parsear");
         assert_eq!(dto.priority, None);
         assert_eq!(dto.due_date, None);
+        assert_eq!(dto.parent, None);
         assert!(dto.assignees.is_empty());
     }
 }
