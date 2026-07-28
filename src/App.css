@@ -435,6 +435,14 @@ button.link.danger {
   padding: 0;
 }
 
+.task-card.draggable {
+  cursor: grab;
+}
+
+.task-card.draggable:active {
+  cursor: grabbing;
+}
+
 /* Cards de task */
 .task-list {
   list-style: none;

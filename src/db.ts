@@ -283,3 +283,11 @@ export async function unpinTask(taskId: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM focus WHERE task_id = $1", [taskId]);
 }
+
+/** Persiste a ordem manual do foco (posição = índice no array). */
+export async function setFocusOrder(orderedIds: string[]): Promise<void> {
+  const db = await getDb();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.execute("UPDATE focus SET position = $2 WHERE task_id = $1", [orderedIds[i], i]);
+  }
+}

@@ -16,6 +16,7 @@ import {
   lastFetchedAt,
   pinTask,
   pruneStale,
+  setFocusOrder,
   STALE_AFTER_MS,
   unpinTask,
   updateTaskStatusLocal,
@@ -82,9 +83,29 @@ function App() {
   const [filter, setFilter] = useState<FilterKind>("tudo");
   const [showDone, setShowDone] = useState(false);
 
-  // Foco (pin)
+  // Foco (pin) + reordenação por arraste
   const [pinnedOrder, setPinnedOrder] = useState<string[]>([]);
   const pinnedSet = useMemo(() => new Set(pinnedOrder), [pinnedOrder]);
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  async function handleDropOn(targetId: string) {
+    if (!dragId || dragId === targetId) {
+      setDragId(null);
+      return;
+    }
+    const order = [...pinnedOrder];
+    const from = order.indexOf(dragId);
+    const to = order.indexOf(targetId);
+    if (from < 0 || to < 0) {
+      setDragId(null);
+      return;
+    }
+    order.splice(from, 1);
+    order.splice(to, 0, dragId);
+    setPinnedOrder(order);
+    setDragId(null);
+    await setFocusOrder(order);
+  }
 
   // Foco: tasks fixadas, resolvidas de TODAS as tasks (imunes ao filtro/sprint).
   const focoTasks = useMemo(
@@ -343,6 +364,10 @@ function App() {
                 pinnedIds={pinnedSet}
                 onTogglePin={handleTogglePin}
                 onStatusChanged={handleStatusChanged}
+                draggable
+                onDragStart={() => setDragId(t.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDropOn(t.id)}
               />
             ))}
           </ol>
