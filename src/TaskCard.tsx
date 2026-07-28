@@ -11,7 +11,15 @@ import {
   type Comment,
   type Reminder,
 } from "./db";
-import { isLate, priorityLabel, showsPriority, statusRole } from "./task";
+import {
+  isLate,
+  priorityLabel,
+  quickReminderAt,
+  relTime,
+  showsPriority,
+  statusRole,
+  type QuickReminder,
+} from "./task";
 
 interface Props {
   task: CachedTask;
@@ -26,21 +34,27 @@ function fmtDayMonth(ms: number): string {
   return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
+const QUICK_CHIPS: { kind: QuickReminder; label: string }[] = [
+  { kind: "today18", label: "hoje 18h" },
+  { kind: "tomorrow9", label: "amanhã 9h" },
+  { kind: "mon9", label: "seg 9h" },
+];
+
 function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: Props) {
   const [showSubs, setShowSubs] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [reminders, setReminders] = useState<Reminder[] | null>(null);
-  const [commentInput, setCommentInput] = useState("");
-  const [remindAt, setRemindAt] = useState("");
-  const [remindBody, setRemindBody] = useState("");
+  const [text, setText] = useState("");
+  const [showChips, setShowChips] = useState(false);
+  const [pickAt, setPickAt] = useState("");
 
   const children = getChildren(task.id);
   const late = isLate(task.due_date);
   const prio = priorityLabel(task.priority);
   const hasDueReminder = dueIds.has(task.id);
 
-  async function loadNotes() {
+  async function reload() {
     setComments(await listComments(task.id));
     setReminders(await listReminders(task.id));
   }
@@ -48,45 +62,49 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
   async function toggleNotes() {
     const next = !showNotes;
     setShowNotes(next);
-    if (next && comments === null) await loadNotes();
+    if (next && comments === null) await reload();
   }
 
-  async function submitComment(e: React.FormEvent) {
-    e.preventDefault();
-    const body = commentInput.trim();
+  async function saveComment() {
+    const body = text.trim();
     if (!body) return;
     await addComment(task.id, "task", body);
-    setCommentInput("");
-    setComments(await listComments(task.id));
+    setText("");
+    await reload();
   }
 
-  async function removeComment(id: string) {
-    await deleteComment(id);
-    setComments(await listComments(task.id));
-  }
-
-  async function submitReminder(e: React.FormEvent) {
-    e.preventDefault();
-    const at = new Date(remindAt).getTime();
+  async function saveReminder(at: number) {
     if (Number.isNaN(at)) return;
-    await addReminder(task.id, "task", at, remindBody.trim() || null);
-    setRemindAt("");
-    setRemindBody("");
-    setReminders(await listReminders(task.id));
+    await addReminder(task.id, "task", at, text.trim() || null);
+    setText("");
+    setShowChips(false);
+    setPickAt("");
+    await reload();
     onRemindersChanged();
   }
 
   async function onDismiss(id: string) {
     await dismissReminder(id);
-    setReminders(await listReminders(task.id));
+    await reload();
     onRemindersChanged();
   }
 
-  async function onDeleteReminder(id: string) {
+  async function removeComment(id: string) {
+    await deleteComment(id);
+    await reload();
+  }
+
+  async function removeReminder(id: string) {
     await deleteReminder(id);
-    setReminders(await listReminders(task.id));
+    await reload();
     onRemindersChanged();
   }
+
+  // Timeline unificada: comentários + lembretes, mais novo no topo.
+  const timeline = [
+    ...(comments ?? []).map((c) => ({ at: c.created_at, kind: "comment" as const, c })),
+    ...(reminders ?? []).map((r) => ({ at: r.created_at, kind: "reminder" as const, r })),
+  ].sort((a, b) => b.at - a.at);
 
   return (
     <li className="task-card" style={{ marginLeft: depth ? 16 : 0 }}>
@@ -124,69 +142,97 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
 
       {showNotes && (
         <div className="notes-panel">
-          <form className="note-add" onSubmit={submitComment}>
-            <input
-              placeholder="Comentário pra você mesmo…"
-              value={commentInput}
-              onChange={(e) => setCommentInput(e.currentTarget.value)}
-            />
-          </form>
-          <ul className="comment-list">
-            {(comments ?? []).map((c) => (
-              <li key={c.id} className="comment">
-                <div className="comment-body">{c.body}</div>
-                <div className="comment-meta muted">
-                  {new Date(c.created_at).toLocaleString()}
-                  <button className="link danger" onClick={() => removeComment(c.id)}>
-                    apagar
-                  </button>
-                </div>
-              </li>
-            ))}
-            {comments !== null && comments.length === 0 && (
-              <li className="muted">Sem comentários ainda.</li>
+          <ul className="timeline">
+            {timeline.map((e) =>
+              e.kind === "comment" ? (
+                <li key={e.c.id} className="entry entry-comment">
+                  <div className="entry-body">{e.c.body}</div>
+                  <div className="entry-meta muted">
+                    <span>{relTime(e.c.created_at)}</span>
+                    <button className="link danger" onClick={() => removeComment(e.c.id)}>
+                      apagar
+                    </button>
+                  </div>
+                </li>
+              ) : (
+                <li
+                  key={e.r.id}
+                  className={`entry entry-reminder${
+                    e.r.dismissed === 0 && e.r.remind_at <= Date.now() ? " due" : ""
+                  }`}
+                >
+                  <div className="entry-body">
+                    <span className="bell">◔</span> {e.r.body ?? "lembrete"}
+                  </div>
+                  <div className="entry-meta muted">
+                    <span>
+                      {e.r.dismissed === 1
+                        ? "dispensado"
+                        : e.r.remind_at <= Date.now()
+                          ? `venceu ${new Date(e.r.remind_at).toLocaleString()}`
+                          : `lembrar ${new Date(e.r.remind_at).toLocaleString()}`}
+                    </span>
+                    <span className="entry-meta-actions">
+                      {e.r.dismissed === 0 && (
+                        <button className="link" onClick={() => onDismiss(e.r.id)}>
+                          dispensar
+                        </button>
+                      )}
+                      <button className="link danger" onClick={() => removeReminder(e.r.id)}>
+                        apagar
+                      </button>
+                    </span>
+                  </div>
+                </li>
+              ),
+            )}
+            {comments !== null && timeline.length === 0 && (
+              <li className="muted entry-empty">Sem anotações ainda.</li>
             )}
           </ul>
 
-          <form className="reminder-add" onSubmit={submitReminder}>
+          <div className="composer">
             <input
-              type="datetime-local"
-              value={remindAt}
-              onChange={(e) => setRemindAt(e.currentTarget.value)}
+              placeholder="Anota aí…"
+              value={text}
+              onChange={(e) => setText(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveComment();
+              }}
             />
-            <input
-              placeholder="lembrete (opcional)"
-              value={remindBody}
-              onChange={(e) => setRemindBody(e.currentTarget.value)}
-            />
-            <button type="submit" disabled={remindAt === ""}>
-              + lembrete
+            <button
+              className="composer-icon"
+              aria-label="Adicionar lembrete"
+              onClick={() => setShowChips((v) => !v)}
+            >
+              lembrete
             </button>
-          </form>
-          <ul className="reminder-list">
-            {(reminders ?? []).map((r) => {
-              const due = r.dismissed === 0 && r.remind_at <= Date.now();
-              return (
-                <li key={r.id} className={`reminder ${due ? "due" : ""}`}>
-                  <span>
-                    {new Date(r.remind_at).toLocaleString()}
-                    {r.body ? ` — ${r.body}` : ""}
-                    {r.dismissed === 1 && " (dispensado)"}
-                  </span>
-                  <span className="reminder-actions">
-                    {r.dismissed === 0 && (
-                      <button className="link" onClick={() => onDismiss(r.id)}>
-                        dispensar
-                      </button>
-                    )}
-                    <button className="link danger" onClick={() => onDeleteReminder(r.id)}>
-                      apagar
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          </div>
+
+          {showChips && (
+            <div className="reminder-chips">
+              {QUICK_CHIPS.map((chip) => (
+                <button
+                  key={chip.kind}
+                  className="chip"
+                  onClick={() => saveReminder(quickReminderAt(chip.kind))}
+                >
+                  {chip.label}
+                </button>
+              ))}
+              <input
+                type="datetime-local"
+                className="chip-picker"
+                value={pickAt}
+                onChange={(e) => setPickAt(e.currentTarget.value)}
+              />
+              {pickAt !== "" && (
+                <button className="chip" onClick={() => saveReminder(new Date(pickAt).getTime())}>
+                  ok
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

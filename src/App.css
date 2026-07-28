@@ -363,72 +363,133 @@ button.link {
   padding-left: 6px;
 }
 
-/* Painel de anotações */
+/* Painel de anotações: log + composer + chips */
 .notes-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px;
   border-radius: 8px;
   background: #17171c;
 }
 
-.note-add input,
-.reminder-add input {
-  font-size: 13px;
-}
-
-.reminder-add {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.reminder-add input[type="datetime-local"] {
-  width: auto;
-}
-
-.comment-list,
-.reminder-list {
+.timeline {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.comment {
-  background: #1f1f26;
-  border-radius: 6px;
-  padding: 6px 8px;
-}
-
-.comment-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-.reminder {
-  display: flex;
-  justify-content: space-between;
   gap: 8px;
+}
+
+.entry-empty {
   font-size: 12px;
-  padding: 4px 6px;
+}
+
+.entry {
+  font-size: 13px;
+}
+
+.entry-comment {
+  border-left: 2px solid #33333a;
+  padding-left: 10px;
+}
+
+.entry-reminder {
+  padding: 6px 8px;
   border-radius: 6px;
   background: #1f1f26;
 }
 
-.reminder.due {
-  background: #3a2f4a;
+.entry-reminder.due {
+  background: #4a1f24;
 }
 
-.reminder-actions {
+.entry-reminder.due .entry-body,
+.entry-reminder.due .entry-meta {
+  color: #ff8f9a;
+}
+
+.bell {
+  color: #d3b4ff;
+}
+
+.entry-body {
+  line-height: 1.4;
+}
+
+.entry-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.entry-meta-actions {
   display: flex;
   gap: 8px;
   flex: none;
+}
+
+/* Composer: um campo só */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #33333a;
+  border-radius: 8px;
+  padding: 2px 4px 2px 10px;
+}
+
+.composer input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.composer input:focus {
+  outline: none;
+}
+
+.composer-icon {
+  flex: none;
+  background: none;
+  color: #9aa4ff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+}
+
+/* Chips de lembrete (data relativa; date picker atrás do último) */
+.reminder-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: none;
+  border: 1px solid #33333a;
+  color: #cfcfe0;
+  font-weight: 400;
+}
+
+.chip:hover {
+  border-color: #6c7bff;
+}
+
+.chip-picker {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 button.link.danger {

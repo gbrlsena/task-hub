@@ -49,6 +49,41 @@ export function showsPriority(priority: number | null): boolean {
   return priority === 1 || priority === 2;
 }
 
+// Lembretes rápidos (chips): data relativa em vez do date picker cru.
+export type QuickReminder = "today18" | "tomorrow9" | "mon9";
+
+/** Converte um chip de lembrete em epoch ms, relativo a `now`. */
+export function quickReminderAt(kind: QuickReminder, now: Date = new Date()): number {
+  const d = new Date(now);
+  d.setSeconds(0, 0);
+  if (kind === "today18") {
+    d.setHours(18, 0, 0, 0);
+    return d.getTime();
+  }
+  if (kind === "tomorrow9") {
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d.getTime();
+  }
+  // mon9: próxima segunda-feira às 9h (nunca hoje).
+  d.setHours(9, 0, 0, 0);
+  const day = d.getDay(); // 0 dom .. 6 sáb
+  let add = (1 - day + 7) % 7;
+  if (add === 0) add = 7;
+  d.setDate(d.getDate() + add);
+  return d.getTime();
+}
+
+/** Tempo relativo curto: "agora", "há 5 min", "há 2 h"; senão data/hora. */
+export function relTime(ms: number, now: Date = new Date()): string {
+  const min = Math.round((now.getTime() - ms) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return new Date(ms).toLocaleString();
+}
+
 export interface TaskTree {
   roots: CachedTask[];
   childrenByParent: Map<string, CachedTask[]>;

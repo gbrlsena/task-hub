@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { CachedTask } from "./db";
-import { buildTaskTree, isLate, priorityLabel, showsPriority, statusRole } from "./task";
+import {
+  buildTaskTree,
+  isLate,
+  priorityLabel,
+  quickReminderAt,
+  relTime,
+  showsPriority,
+  statusRole,
+} from "./task";
 
 function task(partial: Partial<CachedTask> & { id: string }): CachedTask {
   return {
@@ -49,6 +57,37 @@ describe("prioridade", () => {
     expect(showsPriority(2)).toBe(true);
     expect(showsPriority(3)).toBe(false);
     expect(showsPriority(null)).toBe(false);
+  });
+});
+
+describe("quickReminderAt", () => {
+  const wed = new Date(2026, 6, 29, 11, 30); // quarta 29/jul/2026 11:30
+
+  it("hoje 18h no mesmo dia", () => {
+    expect(new Date(quickReminderAt("today18", wed))).toEqual(new Date(2026, 6, 29, 18, 0));
+  });
+
+  it("amanhã 9h no dia seguinte", () => {
+    expect(new Date(quickReminderAt("tomorrow9", wed))).toEqual(new Date(2026, 6, 30, 9, 0));
+  });
+
+  it("seg 9h pula pra próxima segunda", () => {
+    // 29/jul/2026 é quarta → segunda seguinte é 3/ago.
+    expect(new Date(quickReminderAt("mon9", wed))).toEqual(new Date(2026, 7, 3, 9, 0));
+  });
+
+  it("seg 9h nunca cai no mesmo dia se hoje é segunda", () => {
+    const mon = new Date(2026, 7, 3, 8, 0); // segunda 3/ago
+    expect(new Date(quickReminderAt("mon9", mon))).toEqual(new Date(2026, 7, 10, 9, 0));
+  });
+});
+
+describe("relTime", () => {
+  const now = new Date(2026, 6, 29, 12, 0);
+  it("formata minutos e horas recentes", () => {
+    expect(relTime(now.getTime(), now)).toBe("agora");
+    expect(relTime(now.getTime() - 5 * 60000, now)).toBe("há 5 min");
+    expect(relTime(now.getTime() - 3 * 3600000, now)).toBe("há 3 h");
   });
 });
 
