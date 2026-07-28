@@ -278,16 +278,15 @@ function App() {
         </form>
       )}
 
-      <section className="sync-panel">
-        <div className="sync-stats">
-          <span className="sync-count">{tasks.length} tasks</span>
-          <span className="muted">{formatLastSync(lastSync)}</span>
-        </div>
-        {syncError && <p className="error">{syncError}</p>}
-        <button onClick={handleSync} disabled={syncing}>
-          {syncing ? "Sincronizando…" : "Sincronizar tarefas"}
+      <section className="sync-bar">
+        <span className="sync-info muted">
+          {tasks.length} tasks · {formatLastSync(lastSync)}
+        </span>
+        <button className="sync-btn" onClick={handleSync} disabled={syncing}>
+          {syncing ? "…" : "↻ Sincronizar"}
         </button>
       </section>
+      {syncError && <p className="error">{syncError}</p>}
 
       {tasks.length === 0 && !syncing && (
         <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
@@ -388,8 +387,8 @@ function App() {
 function formatLastSync(ts: number | null): string {
   if (ts === null) return "nunca sincronizado";
   const fresh = Date.now() - ts < TASK_TTL_MS;
-  const when = new Date(ts).toLocaleTimeString();
-  return fresh ? `sincronizado ${when} (recente)` : `desatualizado — último: ${when}`;
+  const when = new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return fresh ? `atualizado ${when}` : `desatualizado · ${when}`;
 }
 
 export default App;
