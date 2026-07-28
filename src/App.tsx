@@ -243,6 +243,7 @@ function App() {
   // screen.kind === "board"
   const metricTiles = [
     { label: "abertas", value: metrics.abertas, filter: "tudo" as const, role: "" },
+    { label: "progresso", value: metrics.progresso, filter: "progresso" as const, role: "accent" },
     { label: "atrasadas", value: metrics.atrasadas, filter: "atrasadas" as const, role: "danger" },
     { label: "travadas", value: metrics.travadas, filter: "travadas" as const, role: "danger" },
     { label: "esquecidas", value: metrics.esquecidas, filter: "esquecidas" as const, role: "warning" },

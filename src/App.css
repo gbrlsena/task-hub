@@ -260,8 +260,8 @@ button.link {
 /* Barra de métricas */
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 6px;
 }
 
 .metric {
@@ -284,6 +284,9 @@ button.link {
   font-weight: 700;
 }
 
+.metric-value.accent {
+  color: #9db4ff;
+}
 .metric-value.danger {
   color: #ff8f9a;
 }

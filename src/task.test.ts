@@ -102,7 +102,8 @@ describe("computeMetrics", () => {
       ],
       NOW,
     );
-    expect(m).toEqual({ abertas: 4, atrasadas: 1, travadas: 1, esquecidas: 1 });
+    // progresso: id1 (in progress) + id5 (validação) = 2.
+    expect(m).toEqual({ abertas: 4, progresso: 2, atrasadas: 1, travadas: 1, esquecidas: 1 });
   });
 });
 

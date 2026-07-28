@@ -49,21 +49,28 @@ export function isStale(listName: string, statusType: string, now: Date = new Da
   return meta.kind === "sprint" && meta.endsAt.getTime() < startOfToday(now);
 }
 
-export type FilterKind = "tudo" | "atrasadas" | "travadas" | "esquecidas";
+export type FilterKind = "tudo" | "progresso" | "atrasadas" | "travadas" | "esquecidas";
 
 export interface Metrics {
   abertas: number;
+  progresso: number;
   atrasadas: number;
   travadas: number;
   esquecidas: number;
 }
 
+/** "Em progresso" = status de papel `accent` (in progress, validação, prioritized). */
+export function isInProgress(status: string): boolean {
+  return statusRole(status) === "accent";
+}
+
 /** Métricas do board, contadas só sobre tasks não concluídas. */
 export function computeMetrics(tasks: CachedTask[], now: Date = new Date()): Metrics {
-  const m: Metrics = { abertas: 0, atrasadas: 0, travadas: 0, esquecidas: 0 };
+  const m: Metrics = { abertas: 0, progresso: 0, atrasadas: 0, travadas: 0, esquecidas: 0 };
   for (const t of tasks) {
     if (isDone(t.status_type)) continue;
     m.abertas++;
+    if (isInProgress(t.status)) m.progresso++;
     if (isLate(t.due_date, now)) m.atrasadas++;
     if (isBlocked(t.status)) m.travadas++;
     if (isStale(t.list_name, t.status_type, now)) m.esquecidas++;
@@ -74,6 +81,8 @@ export function computeMetrics(tasks: CachedTask[], now: Date = new Date()): Met
 /** A task casa com o filtro de atributo selecionado? ("tudo" sempre casa.) */
 export function matchesFilter(t: CachedTask, filter: FilterKind, now: Date = new Date()): boolean {
   switch (filter) {
+    case "progresso":
+      return isInProgress(t.status);
     case "atrasadas":
       return isLate(t.due_date, now);
     case "travadas":
