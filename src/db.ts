@@ -11,6 +11,7 @@ export interface SyncedTask {
   custom_id: string | null;
   name: string;
   status: string;
+  status_type: string;
   priority: number | null;
   list_id: string;
   list_name: string;
@@ -26,6 +27,7 @@ export interface CachedTask {
   custom_id: string | null;
   name: string;
   status: string;
+  status_type: string;
   priority: number | null;
   list_id: string;
   list_name: string;
@@ -67,12 +69,13 @@ export async function cacheTasks(tasks: SyncedTask[], fetchedAt: number): Promis
   for (const t of tasks) {
     await db.execute(
       `INSERT INTO task_cache
-         (id, custom_id, name, status, priority, list_id, list_name, due_date, parent, assignees, raw, fetched_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         (id, custom_id, name, status, status_type, priority, list_id, list_name, due_date, parent, assignees, raw, fetched_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT(id) DO UPDATE SET
          custom_id = excluded.custom_id,
          name      = excluded.name,
          status    = excluded.status,
+         status_type = excluded.status_type,
          priority  = excluded.priority,
          list_id   = excluded.list_id,
          list_name = excluded.list_name,
@@ -86,6 +89,7 @@ export async function cacheTasks(tasks: SyncedTask[], fetchedAt: number): Promis
         t.custom_id,
         t.name,
         t.status,
+        t.status_type,
         t.priority,
         t.list_id,
         t.list_name,
@@ -109,7 +113,7 @@ export async function pruneStale(syncedAt: number): Promise<void> {
 export async function getCachedTasks(): Promise<CachedTask[]> {
   const db = await getDb();
   return db.select<CachedTask[]>(
-    `SELECT id, custom_id, name, status, priority, list_id, list_name, due_date, parent
+    `SELECT id, custom_id, name, status, status_type, priority, list_id, list_name, due_date, parent
      FROM task_cache
      ORDER BY list_name, due_date IS NULL, due_date`,
   );

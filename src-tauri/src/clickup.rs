@@ -87,6 +87,8 @@ pub struct TaskDto {
     pub custom_id: Option<String>,
     pub name: String,
     pub status: String,
+    /// type do status na API: open | custom | closed | done (§1.3).
+    pub status_type: String,
     pub priority: Option<i64>,
     pub list_id: String,
     pub list_name: String,
@@ -118,6 +120,7 @@ fn parse_task(t: &serde_json::Value) -> Option<TaskDto> {
         custom_id: t["custom_id"].as_str().map(str::to_string),
         name: t["name"].as_str().unwrap_or("(sem título)").to_string(),
         status: t["status"]["status"].as_str().unwrap_or("").to_string(),
+        status_type: t["status"]["type"].as_str().unwrap_or("").to_string(),
         priority: str_to_i64(&t["priority"]["id"]),
         list_id: t["list"]["id"].as_str().unwrap_or("").to_string(),
         list_name: t["list"]["name"].as_str().unwrap_or("").to_string(),
@@ -346,6 +349,7 @@ mod tests {
         assert_eq!(dto.id, "abc123");
         assert_eq!(dto.custom_id.as_deref(), Some("REV-42"));
         assert_eq!(dto.status, "in progress");
+        assert_eq!(dto.status_type, "custom");
         assert_eq!(dto.priority, Some(2));
         assert_eq!(dto.due_date, Some(1690000000000));
         assert_eq!(dto.list_id, "901114167268");

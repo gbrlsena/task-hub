@@ -257,6 +257,76 @@ button.link {
   font-family: ui-monospace, "Cascadia Code", monospace;
 }
 
+/* Barra de métricas */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  background: #1f1f26;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.metric.active {
+  border-color: #6c7bff;
+}
+
+.metric-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.metric-value.danger {
+  color: #ff8f9a;
+}
+.metric-value.warning {
+  color: #ffcf8f;
+}
+
+.metric-label {
+  font-size: 11px;
+}
+
+/* Chips de filtro */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-chip {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: none;
+  border: 1px solid #33333a;
+  color: #cfcfe0;
+  font-weight: 400;
+}
+
+.filter-chip.active {
+  background: #6c7bff;
+  border-color: #6c7bff;
+  color: white;
+}
+
+.filter-chip.toggle {
+  margin-left: auto;
+}
+
+.filter-head {
+  font-size: 12px;
+  padding: 2px;
+}
+
 /* Navegação de sprint */
 .sprint-nav {
   display: flex;

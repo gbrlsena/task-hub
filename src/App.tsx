@@ -18,7 +18,13 @@ import {
   type CachedTask,
 } from "./db";
 import { groupBySprint, pickCurrentGroupIndex } from "./sprint";
-import { buildTaskTree } from "./task";
+import {
+  buildTaskTree,
+  computeMetrics,
+  isDone,
+  matchesFilter,
+  type FilterKind,
+} from "./task";
 import TaskCard from "./TaskCard";
 import "./App.css";
 
@@ -27,11 +33,17 @@ type Screen = { kind: "loading" } | { kind: "token" } | { kind: "board" };
 const DEFAULT_FOLDER_ID = "90118026854";
 const FOLDER_KEY = "taskhub.folderId";
 
+const CHIPS: { filter: FilterKind; label: string }[] = [
+  { filter: "tudo", label: "tudo" },
+  { filter: "atrasadas", label: "atrasadas" },
+  { filter: "travadas", label: "travadas" },
+  { filter: "esquecidas", label: "esquecidas" },
+];
+
 function loadFolderId(): string {
   return localStorage.getItem(FOLDER_KEY) ?? DEFAULT_FOLDER_ID;
 }
 
-/** Aceita a URL do folder (.../v/f/{id}/...) ou o id cru. */
 function parseFolderId(input: string): string | null {
   const s = input.trim();
   const fromUrl = s.match(/\/f\/(\d+)/);
@@ -43,6 +55,8 @@ function parseFolderId(input: string): string | null {
 function fmtDM(d: Date): string {
   return `${d.getDate()}/${d.getMonth() + 1}`;
 }
+
+const noChildren = () => [];
 
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
@@ -66,10 +80,20 @@ function App() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dueIds, setDueIds] = useState<Set<string>>(new Set());
 
-  // Navegação de sprint
+  // Navegação / filtros
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKind>("tudo");
+  const [showDone, setShowDone] = useState(false);
 
-  const groups = useMemo(() => groupBySprint(tasks), [tasks]);
+  const metrics = useMemo(() => computeMetrics(tasks), [tasks]);
+
+  // Base = tasks visíveis (concluídas escondidas por padrão).
+  const baseTasks = useMemo(
+    () => (showDone ? tasks : tasks.filter((t) => !isDone(t.status_type))),
+    [tasks, showDone],
+  );
+
+  const groups = useMemo(() => groupBySprint(baseTasks), [baseTasks]);
 
   const currentIndex = useMemo(() => {
     if (groups.length === 0) return -1;
@@ -85,18 +109,22 @@ function App() {
   );
   const getChildren = (id: string) => tree.childrenByParent.get(id) ?? [];
 
+  // Filtro por atributo: lista plana através de todas as sprints.
+  const filtered = useMemo(
+    () => baseTasks.filter((t) => matchesFilter(t, filter)),
+    [baseTasks, filter],
+  );
+
   async function reloadDue() {
     setDueIds(await dueReminderSubjectIds(Date.now()));
   }
 
-  // Tela inicial: existe token salvo?
   useEffect(() => {
     tokenStatus()
       .then((has) => setScreen(has ? { kind: "board" } : { kind: "token" }))
       .catch(() => setScreen({ kind: "token" }));
   }, []);
 
-  // Ao entrar no board (ou trocar de folder): nome do folder + cache + lembretes.
   useEffect(() => {
     if (screen.kind !== "board") return;
     let alive = true;
@@ -225,6 +253,13 @@ function App() {
   }
 
   // screen.kind === "board"
+  const metricTiles = [
+    { label: "abertas", value: metrics.abertas, filter: "tudo" as const, role: "" },
+    { label: "atrasadas", value: metrics.atrasadas, filter: "atrasadas" as const, role: "danger" },
+    { label: "travadas", value: metrics.travadas, filter: "travadas" as const, role: "danger" },
+    { label: "esquecidas", value: metrics.esquecidas, filter: "esquecidas" as const, role: "warning" },
+  ];
+
   return (
     <main className="app">
       <header className="app-header">
@@ -265,11 +300,47 @@ function App() {
         </button>
       </section>
 
-      {groups.length === 0 && !syncing && (
+      {tasks.length > 0 && (
+        <>
+          <section className="metrics">
+            {metricTiles.map((m) => (
+              <button
+                key={m.label}
+                className={`metric${filter === m.filter ? " active" : ""}`}
+                onClick={() => setFilter(m.filter)}
+              >
+                <span className={`metric-value ${m.role}`}>{m.value}</span>
+                <span className="metric-label muted">{m.label}</span>
+              </button>
+            ))}
+          </section>
+
+          <section className="chips">
+            {CHIPS.map((c) => (
+              <button
+                key={c.filter}
+                className={`filter-chip${filter === c.filter ? " active" : ""}`}
+                onClick={() => setFilter(c.filter)}
+              >
+                {c.label}
+              </button>
+            ))}
+            <button
+              className={`filter-chip toggle${showDone ? " active" : ""}`}
+              onClick={() => setShowDone((v) => !v)}
+            >
+              {showDone ? "✓ concluídas" : "concluídas"}
+            </button>
+          </section>
+        </>
+      )}
+
+      {tasks.length === 0 && !syncing && (
         <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
       )}
 
-      {current && (
+      {/* Filtro "tudo": navegação por sprint com árvore de subtasks. */}
+      {filter === "tudo" && current && (
         <>
           <nav className="sprint-nav">
             <button
@@ -311,6 +382,27 @@ function App() {
                 onRemindersChanged={reloadDue}
               />
             ))}
+          </ul>
+        </>
+      )}
+
+      {/* Filtro por atributo: lista plana através de todas as sprints. */}
+      {filter !== "tudo" && (
+        <>
+          <div className="filter-head muted">
+            {filtered.length} {filter}
+          </div>
+          <ul className="task-list">
+            {filtered.map((t) => (
+              <TaskCard
+                key={t.id}
+                task={t}
+                getChildren={noChildren}
+                dueIds={dueIds}
+                onRemindersChanged={reloadDue}
+              />
+            ))}
+            {filtered.length === 0 && <li className="muted">Nada aqui. 🎉</li>}
           </ul>
         </>
       )}

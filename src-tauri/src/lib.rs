@@ -84,6 +84,12 @@ pub fn run() {
             sql: include_str!("../migrations/0002_notes.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "status_type column for done detection",
+            sql: include_str!("../migrations/0003_status_type.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

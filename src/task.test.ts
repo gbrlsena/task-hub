@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { CachedTask } from "./db";
 import {
   buildTaskTree,
+  computeMetrics,
+  isDone,
   isLate,
+  isStale,
   priorityLabel,
   quickReminderAt,
   relTime,
@@ -15,6 +18,7 @@ function task(partial: Partial<CachedTask> & { id: string }): CachedTask {
     custom_id: null,
     name: partial.id,
     status: "to do",
+    status_type: "open",
     priority: null,
     list_id: "1",
     list_name: "Backlog",
@@ -57,6 +61,48 @@ describe("prioridade", () => {
     expect(showsPriority(2)).toBe(true);
     expect(showsPriority(3)).toBe(false);
     expect(showsPriority(null)).toBe(false);
+  });
+});
+
+describe("isDone / isStale", () => {
+  it("done pelo type, não pela string", () => {
+    expect(isDone("done")).toBe(true);
+    expect(isDone("closed")).toBe(true);
+    expect(isDone("custom")).toBe(false);
+    expect(isDone("open")).toBe(false);
+  });
+
+  it("esquecida: sprint fechada e task não concluída", () => {
+    // Em 28/jul/2026, Sprint 2 (9/6–15/6) já fechou.
+    expect(isStale("Revenue Sprint 2 (6/9 - 6/15)", "custom", NOW)).toBe(true);
+    // Mesma sprint mas concluída → não é esquecida.
+    expect(isStale("Revenue Sprint 2 (6/9 - 6/15)", "done", NOW)).toBe(false);
+    // Sprint atual (8) ainda aberta → não é esquecida.
+    expect(isStale("Revenue Sprint 8 (7/21 - 8/3)", "custom", NOW)).toBe(false);
+    // Lista não-sprint nunca é esquecida.
+    expect(isStale("Backlog", "custom", NOW)).toBe(false);
+  });
+});
+
+describe("computeMetrics", () => {
+  it("conta só não-concluídas; atrasada/travada/esquecida são subconjuntos", () => {
+    const t = (p: Partial<CachedTask> & { id: string }) => task(p);
+    const m = computeMetrics(
+      [
+        t({ id: "1", status_type: "custom", status: "in progress" }),
+        t({ id: "2", status_type: "done", status: "concluída" }), // ignorada
+        t({ id: "3", status_type: "custom", status: "com blocker" }), // travada
+        t({ id: "4", status_type: "open", status: "to do", due_date: new Date(2026, 6, 1).getTime() }), // atrasada
+        t({
+          id: "5",
+          status_type: "custom",
+          status: "validação",
+          list_name: "Revenue Sprint 2 (6/9 - 6/15)",
+        }), // esquecida
+      ],
+      NOW,
+    );
+    expect(m).toEqual({ abertas: 4, atrasadas: 1, travadas: 1, esquecidas: 1 });
   });
 });
 

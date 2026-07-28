@@ -1,4 +1,5 @@
 import type { CachedTask } from "./db";
+import { parseListMeta } from "./sprint";
 
 // Mapa de status -> papel de cor na UI (§1.3). Só apresentação.
 export type Role = "danger" | "accent" | "warning" | "neutral";
@@ -31,6 +32,57 @@ export function isLate(dueDate: number | null, now: Date = new Date()): boolean 
 /** status contém "blocker" (§1.6). */
 export function isBlocked(status: string): boolean {
   return status.toLowerCase().includes("blocker");
+}
+
+/** "Concluída" pelo type da API, sem hardcodar strings de status (§1.3). */
+export function isDone(statusType: string): boolean {
+  return statusType === "done" || statusType === "closed";
+}
+
+/**
+ * Esquecida (§1.6): task aberta numa sprint que já fechou. O sinal mais
+ * valioso e que não existe em view nativa do ClickUp.
+ */
+export function isStale(listName: string, statusType: string, now: Date = new Date()): boolean {
+  if (isDone(statusType)) return false;
+  const meta = parseListMeta(listName, now);
+  return meta.kind === "sprint" && meta.endsAt.getTime() < startOfToday(now);
+}
+
+export type FilterKind = "tudo" | "atrasadas" | "travadas" | "esquecidas";
+
+export interface Metrics {
+  abertas: number;
+  atrasadas: number;
+  travadas: number;
+  esquecidas: number;
+}
+
+/** Métricas do board, contadas só sobre tasks não concluídas. */
+export function computeMetrics(tasks: CachedTask[], now: Date = new Date()): Metrics {
+  const m: Metrics = { abertas: 0, atrasadas: 0, travadas: 0, esquecidas: 0 };
+  for (const t of tasks) {
+    if (isDone(t.status_type)) continue;
+    m.abertas++;
+    if (isLate(t.due_date, now)) m.atrasadas++;
+    if (isBlocked(t.status)) m.travadas++;
+    if (isStale(t.list_name, t.status_type, now)) m.esquecidas++;
+  }
+  return m;
+}
+
+/** A task casa com o filtro de atributo selecionado? ("tudo" sempre casa.) */
+export function matchesFilter(t: CachedTask, filter: FilterKind, now: Date = new Date()): boolean {
+  switch (filter) {
+    case "atrasadas":
+      return isLate(t.due_date, now);
+    case "travadas":
+      return isBlocked(t.status);
+    case "esquecidas":
+      return isStale(t.list_name, t.status_type, now);
+    default:
+      return true;
+  }
 }
 
 const PRIORITY_LABELS: Record<number, string> = {

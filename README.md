@@ -37,6 +37,10 @@ Stack: Tauri 2 · React 18 + TypeScript + Vite · keyring nativo · `reqwest` no
 - Camada privada local (nunca vai pro ClickUp): comentários datados + lembretes
   com badge quando vencido, por task — `src/TaskCard.tsx`, tabelas `comment` e
   `reminder` (`migrations/0002_notes.sql`).
+- Barra de métricas (abertas/atrasadas/travadas/esquecidas) e chips de filtro;
+  tasks concluídas escondidas por padrão. "Concluída" é detectado pelo `type` do
+  status (`done`/`closed`), sem hardcodar strings (§1.3) — coluna `status_type`
+  (`migrations/0003_status_type.sql`), lógica em `src/task.ts`.
 
 Commands expostos ao frontend (`src/api.ts`):
 `token_status`, `save_clickup_token`, `clear_clickup_token`, `get_teams`,
