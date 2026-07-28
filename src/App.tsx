@@ -14,7 +14,7 @@ import {
   getCachedTasks,
   lastFetchedAt,
   pruneStale,
-  TASK_TTL_MS,
+  STALE_AFTER_MS,
   type CachedTask,
 } from "./db";
 import { groupBySprint, pickCurrentGroupIndex } from "./sprint";
@@ -386,7 +386,7 @@ function App() {
 
 function formatLastSync(ts: number | null): string {
   if (ts === null) return "nunca sincronizado";
-  const fresh = Date.now() - ts < TASK_TTL_MS;
+  const fresh = Date.now() - ts < STALE_AFTER_MS;
   const when = new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return fresh ? `atualizado ${when}` : `desatualizado · ${when}`;
 }

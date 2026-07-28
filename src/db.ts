@@ -3,6 +3,9 @@ import Database from "@tauri-apps/plugin-sql";
 /** TTL do cache de tasks: 5 minutos (spec §1.1). */
 export const TASK_TTL_MS = 5 * 60 * 1000;
 
+/** Limite pra rotular o cache como "desatualizado" na UI: 12h sem sync. */
+export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;
+
 export type SubjectKind = "task" | "note";
 
 /** Task como devolvida pelo command Rust `sync_open_tasks`. */
