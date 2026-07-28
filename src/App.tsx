@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  anthropicStatus,
   clearToken,
   getFolder,
+  githubStatus,
+  saveAnthropicKey,
+  saveGithubToken,
   saveToken,
   syncOpenTasks,
   tokenStatus,
@@ -77,6 +81,36 @@ function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dueIds, setDueIds] = useState<Set<string>>(new Set());
+
+  // Fase 2: conexões (Anthropic + GitHub)
+  const [connOpen, setConnOpen] = useState(false);
+  const [anthropicOn, setAnthropicOn] = useState(false);
+  const [githubOn, setGithubOn] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const [ghInput, setGhInput] = useState("");
+  const [connError, setConnError] = useState<string | null>(null);
+
+  async function saveKey() {
+    setConnError(null);
+    try {
+      await saveAnthropicKey(keyInput);
+      setKeyInput("");
+      setAnthropicOn(true);
+    } catch (e) {
+      setConnError(String(e));
+    }
+  }
+
+  async function saveGh() {
+    setConnError(null);
+    try {
+      await saveGithubToken(ghInput);
+      setGhInput("");
+      setGithubOn(true);
+    } catch (e) {
+      setConnError(String(e));
+    }
+  }
 
   // Navegação / filtros
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -173,6 +207,9 @@ function App() {
         setPinnedOrder(pinned);
       })
       .catch(() => {});
+
+    anthropicStatus().then((v) => alive && setAnthropicOn(v)).catch(() => {});
+    githubStatus().then((v) => alive && setGithubOn(v)).catch(() => {});
 
     return () => {
       alive = false;
@@ -464,9 +501,53 @@ function App() {
       )}
 
       <footer className="app-footer">
-        <button className="link" onClick={handleChangeToken}>
-          Trocar token
-        </button>
+        <div className="footer-row">
+          <button className="link" onClick={handleChangeToken}>
+            Trocar token
+          </button>
+          <button className="link" onClick={() => setConnOpen((v) => !v)}>
+            conexões {anthropicOn ? "· Claude ✓" : ""}
+            {githubOn ? " · GitHub ✓" : ""}
+          </button>
+        </div>
+
+        {connOpen && (
+          <div className="conn-panel">
+            <label className="eyebrow">Chave da API Anthropic</label>
+            <div className="composer">
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={anthropicOn ? "conectada — cole para trocar" : "sk-ant-…"}
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.currentTarget.value)}
+              />
+              <button className="composer-icon" onClick={saveKey} disabled={keyInput.trim() === ""}>
+                salvar
+              </button>
+            </div>
+
+            <label className="eyebrow">Token do GitHub (opcional, para PRs)</label>
+            <div className="composer">
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={githubOn ? "conectado — cole para trocar" : "ghp_… / github_pat_…"}
+                value={ghInput}
+                onChange={(e) => setGhInput(e.currentTarget.value)}
+              />
+              <button className="composer-icon" onClick={saveGh} disabled={ghInput.trim() === ""}>
+                salvar
+              </button>
+            </div>
+
+            {connError && <p className="error">{connError}</p>}
+            <p className="hint">
+              Guardadas no cofre do SO, nunca em arquivo ou log. A verificação chama a API da
+              Anthropic (custa por uso).
+            </p>
+          </div>
+        )}
       </footer>
     </main>
   );

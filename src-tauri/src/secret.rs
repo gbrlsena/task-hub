@@ -1,38 +1,42 @@
-//! Armazenamento do token pessoal do ClickUp no cofre de credenciais do SO.
+//! Armazenamento de segredos no cofre de credenciais do SO.
 //!
-//! Regra do spec: o token nunca vive em arquivo de config, `.env`, localStorage
-//! ou log. Ele so existe no keyring nativo (Credential Manager no Windows,
-//! Secret Service no Linux) e no lado Rust. Nunca e devolvido para o JS.
+//! Regra do spec: segredos nunca vivem em arquivo de config, `.env`,
+//! localStorage ou log. Só no keyring nativo (Credential Manager no Windows,
+//! Secret Service no Linux) e no lado Rust. Nunca devolvidos para o JS.
 
 use keyring::{Entry, Error as KeyringError};
 
 const SERVICE: &str = "task-hub";
-const ACCOUNT: &str = "clickup_personal_token";
 
-fn entry() -> Result<Entry, String> {
-    Entry::new(SERVICE, ACCOUNT).map_err(|e| format!("Falha ao abrir o cofre de credenciais: {e}"))
+// Contas (uma por segredo).
+pub const CLICKUP: &str = "clickup_personal_token";
+pub const ANTHROPIC: &str = "anthropic_api_key";
+pub const GITHUB: &str = "github_token";
+
+fn entry(account: &str) -> Result<Entry, String> {
+    Entry::new(SERVICE, account).map_err(|e| format!("Falha ao abrir o cofre: {e}"))
 }
 
-/// Grava (ou sobrescreve) o token no cofre.
-pub fn store(token: &str) -> Result<(), String> {
-    entry()?
+/// Grava (ou sobrescreve) um segredo.
+pub fn store(account: &str, token: &str) -> Result<(), String> {
+    entry(account)?
         .set_password(token)
-        .map_err(|e| format!("Falha ao salvar o token no cofre: {e}"))
+        .map_err(|e| format!("Falha ao salvar no cofre: {e}"))
 }
 
-/// Le o token. `Ok(None)` quando ainda nao ha token salvo.
-pub fn read() -> Result<Option<String>, String> {
-    match entry()?.get_password() {
+/// Lê um segredo. `Ok(None)` quando ainda não há valor salvo.
+pub fn read(account: &str) -> Result<Option<String>, String> {
+    match entry(account)?.get_password() {
         Ok(token) => Ok(Some(token)),
         Err(KeyringError::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Falha ao ler o token do cofre: {e}")),
+        Err(e) => Err(format!("Falha ao ler do cofre: {e}")),
     }
 }
 
-/// Remove o token. Idempotente: apagar algo inexistente nao e erro.
-pub fn clear() -> Result<(), String> {
-    match entry()?.delete_credential() {
+/// Remove um segredo. Idempotente.
+pub fn clear(account: &str) -> Result<(), String> {
+    match entry(account)?.delete_credential() {
         Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Falha ao remover o token do cofre: {e}")),
+        Err(e) => Err(format!("Falha ao remover do cofre: {e}")),
     }
 }

@@ -370,6 +370,57 @@ pub async fn set_task_status(token: &str, task_id: &str, status: &str) -> Result
     })
 }
 
+/// Resumo de uma task para a Fase 2: status, assignees, due_date e comentários
+/// recentes. Retorna JSON compacto pronto pra virar tool_result.
+pub async fn get_task_summary(token: &str, task_id: &str) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let task: serde_json::Value = client
+        .get(format!("{API_BASE}/task/{task_id}"))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao ler a task: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada ao ler a task: {e}"))?;
+
+    // Comentários (melhor esforço; se falhar, segue sem eles).
+    let comments = client
+        .get(format!("{API_BASE}/task/{task_id}/comment"))
+        .header("Authorization", token)
+        .send()
+        .await
+        .ok();
+    let recent: Vec<String> = match comments {
+        Some(resp) if resp.status().is_success() => resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v["comments"].as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .rev()
+            .take(5)
+            .filter_map(|c| c["comment_text"].as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    Ok(serde_json::json!({
+        "id": task["id"],
+        "name": task["name"],
+        "status": task["status"]["status"],
+        "status_type": task["status"]["type"],
+        "due_date": task["due_date"],
+        "assignees": task["assignees"].as_array().map(|a| {
+            a.iter().filter_map(|x| x["username"].as_str()).collect::<Vec<_>>()
+        }),
+        "url": task["url"],
+        "recent_comments": recent,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::TeamsResponse;

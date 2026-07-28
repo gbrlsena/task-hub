@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { loadListStatuses, setTaskStatus } from "./api";
+import { askTask, loadListStatuses, setTaskStatus, type AskResult } from "./api";
 import {
   addComment,
   addReminder,
@@ -102,6 +102,68 @@ function TaskCard({
     } catch (e) {
       onStatusChanged(task.id, prevStatus, prevType); // rollback
       setStatusError(String(e));
+    }
+  }
+
+  // Fase 2: perguntar sobre a task
+  const [showAsk, setShowAsk] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [ask, setAsk] = useState<AskResult | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  async function runAsk() {
+    const q = question.trim();
+    if (!q) return;
+    setAsking(true);
+    setAskError(null);
+    setAsk(null);
+    try {
+      setAsk(await askTask(task.id, q));
+    } catch (e) {
+      setAskError(String(e));
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  // Aplica a sugestão da IA (só por clique explícito do usuário).
+  async function applySuggestion(r: AskResult) {
+    let target: string | null = null;
+    let newType = task.status_type;
+    try {
+      const statuses = await loadListStatuses(task.list_id);
+      if (r.acao === "marcar_feito") {
+        const done =
+          statuses.find((s) => s.type === "done") ?? statuses.find((s) => s.type === "closed");
+        if (done) {
+          target = done.status;
+          newType = done.type;
+        }
+      } else if (r.acao === "mudar_status" && r.status_alvo) {
+        const match = statuses.find(
+          (s) => s.status.toLowerCase() === r.status_alvo!.toLowerCase(),
+        );
+        target = match?.status ?? r.status_alvo;
+        newType = match?.type ?? task.status_type;
+      }
+    } catch (e) {
+      setAskError(String(e));
+      return;
+    }
+    if (!target) {
+      setAskError("Não consegui resolver o status alvo nessa lista.");
+      return;
+    }
+    const prevStatus = task.status;
+    const prevType = task.status_type;
+    onStatusChanged(task.id, target, newType); // otimista
+    try {
+      await setTaskStatus(task.id, target);
+      setAsk(null);
+    } catch (e) {
+      onStatusChanged(task.id, prevStatus, prevType); // rollback
+      setAskError(String(e));
     }
   }
 
@@ -229,7 +291,56 @@ function TaskCard({
         <button className="link" onClick={toggleNotes}>
           {showNotes ? "▾" : "▸"} minhas anotações
         </button>
+        <button className="link" onClick={() => setShowAsk((v) => !v)}>
+          {showAsk ? "▾" : "▸"} perguntar
+        </button>
       </div>
+
+      {showAsk && (
+        <div className="ask-panel">
+          <div className="composer">
+            <input
+              placeholder="perguntar sobre essa task…"
+              value={question}
+              onChange={(e) => setQuestion(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runAsk();
+              }}
+            />
+            <button className="composer-icon" onClick={runAsk} disabled={asking}>
+              {asking ? "…" : "perguntar"}
+            </button>
+          </div>
+
+          {askError && <p className="error">{askError}</p>}
+
+          {ask && !ask.valid && (
+            <div className="ask-result">
+              <p className="ask-resposta">{ask.raw}</p>
+              <p className="muted">Não interpretei como ação estruturada — sem sugestão.</p>
+            </div>
+          )}
+
+          {ask && ask.valid && (
+            <div className="ask-result">
+              <p className="ask-resposta">{ask.resposta}</p>
+              <p className="ask-evidencia">
+                <span className="eyebrow">evidência</span> {ask.evidencia || "—"}
+              </p>
+              <div className="ask-foot">
+                <span className={`pill conf-${ask.confianca}`}>confiança {ask.confianca}</span>
+                {ask.acao !== "nada" && ask.confianca !== "baixa" && (
+                  <button className="ask-confirm" onClick={() => applySuggestion(ask)}>
+                    {ask.acao === "marcar_feito"
+                      ? "confirmar · marcar feito"
+                      : `confirmar · ${ask.status_alvo ?? "mudar status"}`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {showNotes && (
         <div className="notes-panel">

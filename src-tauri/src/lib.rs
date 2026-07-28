@@ -1,17 +1,25 @@
+mod ai;
 mod clickup;
+mod github;
 mod secret;
 
+use ai::AskResult;
 use clickup::{FolderRef, StatusDef, TaskDto, Team};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
-/// Ha um token do ClickUp salvo no cofre?
-#[tauri::command]
-fn token_status() -> Result<bool, String> {
-    Ok(secret::read()?.is_some())
+/// Lê o token do ClickUp do cofre ou erro acionável.
+fn clickup_token() -> Result<String, String> {
+    secret::read(secret::CLICKUP)?.ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())
 }
 
-/// Valida o formato do token pessoal do ClickUp (contrato do spec, secao 1.1):
-/// nao vazio e prefixo `pk_`. Retorna o token ja com espacos aparados.
+// --- ClickUp -------------------------------------------------------------
+
+#[tauri::command]
+fn token_status() -> Result<bool, String> {
+    Ok(secret::read(secret::CLICKUP)?.is_some())
+}
+
+/// Valida o formato do token pessoal do ClickUp (§1.1): prefixo `pk_`.
 fn validate_token(token: &str) -> Result<&str, String> {
     let token = token.trim();
     if token.is_empty() {
@@ -23,66 +31,96 @@ fn validate_token(token: &str) -> Result<&str, String> {
     Ok(token)
 }
 
-/// Salva o token pessoal do ClickUp no cofre nativo.
 #[tauri::command]
 fn save_clickup_token(token: String) -> Result<(), String> {
     let token = validate_token(&token)?;
-    secret::store(token)
+    secret::store(secret::CLICKUP, token)
 }
 
-/// Remove o token salvo (para trocar de conta/workspace).
 #[tauri::command]
 fn clear_clickup_token() -> Result<(), String> {
-    secret::clear()
+    secret::clear(secret::CLICKUP)
 }
 
-/// Descobre os workspaces do usuario via `GET /api/v2/team`.
-/// Le o token do cofre; ele nunca transita pelo frontend.
 #[tauri::command]
 async fn get_teams() -> Result<Vec<Team>, String> {
-    let token = secret::read()?
-        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
-    clickup::get_teams(&token).await
+    clickup::get_teams(&clickup_token()?).await
 }
 
-/// Resolve o folder escolhido (id -> nome) para exibir o board na UI.
 #[tauri::command]
 async fn get_folder(folder_id: String) -> Result<FolderRef, String> {
-    let token = secret::read()?
-        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
-    clickup::get_folder(&token, &folder_id).await
+    clickup::get_folder(&clickup_token()?, &folder_id).await
 }
 
-/// Sync das tasks abertas do usuario dentro do folder escolhido (paginado,
-/// um unico fetch). Usa o primeiro workspace; o SQLite fica a cargo do frontend.
 #[tauri::command]
 async fn sync_open_tasks(folder_id: String) -> Result<Vec<TaskDto>, String> {
-    let token = secret::read()?
-        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
-
+    let token = clickup_token()?;
     let teams = clickup::get_teams(&token).await?;
     let team = teams
         .first()
         .ok_or_else(|| "Nenhum workspace disponivel para este token.".to_string())?;
-
     let assignee_id = clickup::get_authorized_user_id(&token).await?;
     clickup::fetch_open_tasks(&token, &team.id, assignee_id, &folder_id).await
 }
 
-/// Statuses de uma List (para o menu de troca de status).
 #[tauri::command]
 async fn get_list_statuses(list_id: String) -> Result<Vec<StatusDef>, String> {
-    let token = secret::read()?
-        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
-    clickup::get_list_statuses(&token, &list_id).await
+    clickup::get_list_statuses(&clickup_token()?, &list_id).await
 }
 
-/// Grava o status de uma task no ClickUp (ação explícita do usuário).
 #[tauri::command]
 async fn set_task_status(task_id: String, status: String) -> Result<(), String> {
-    let token = secret::read()?
-        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
-    clickup::set_task_status(&token, &task_id, &status).await
+    clickup::set_task_status(&clickup_token()?, &task_id, &status).await
+}
+
+// --- Fase 2: credenciais + verificação -----------------------------------
+
+#[tauri::command]
+fn anthropic_status() -> Result<bool, String> {
+    Ok(secret::read(secret::ANTHROPIC)?.is_some())
+}
+
+#[tauri::command]
+fn save_anthropic_key(key: String) -> Result<(), String> {
+    let key = key.trim();
+    if !key.starts_with("sk-ant-") {
+        return Err("A chave da API Anthropic deve comecar com 'sk-ant-'.".into());
+    }
+    secret::store(secret::ANTHROPIC, key)
+}
+
+#[tauri::command]
+fn clear_anthropic_key() -> Result<(), String> {
+    secret::clear(secret::ANTHROPIC)
+}
+
+#[tauri::command]
+fn github_status() -> Result<bool, String> {
+    Ok(secret::read(secret::GITHUB)?.is_some())
+}
+
+#[tauri::command]
+fn save_github_token(token: String) -> Result<(), String> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err("Informe o token do GitHub.".into());
+    }
+    secret::store(secret::GITHUB, token)
+}
+
+#[tauri::command]
+fn clear_github_token() -> Result<(), String> {
+    secret::clear(secret::GITHUB)
+}
+
+/// Verificação via Claude (Fase 2). Lê as credenciais do cofre.
+#[tauri::command]
+async fn ask_task(task_id: String, question: String) -> Result<AskResult, String> {
+    let anthropic = secret::read(secret::ANTHROPIC)?
+        .ok_or_else(|| "Conecte a API da Anthropic primeiro (chave sk-ant-).".to_string())?;
+    let clickup = clickup_token()?;
+    let github = secret::read(secret::GITHUB)?;
+    ai::ask_task(&anthropic, &clickup, github.as_deref(), &task_id, &question).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -123,7 +161,14 @@ pub fn run() {
             get_folder,
             sync_open_tasks,
             get_list_statuses,
-            set_task_status
+            set_task_status,
+            anthropic_status,
+            save_anthropic_key,
+            clear_anthropic_key,
+            github_status,
+            save_github_token,
+            clear_github_token,
+            ask_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -146,7 +191,6 @@ mod tests {
     #[test]
     fn rejeita_token_sem_prefixo() {
         assert!(validate_token("123abc").is_err());
-        // Nao aceitar Bearer/OAuth aqui: o spec exige token pessoal pk_.
         assert!(validate_token("Bearer pk_123").is_err());
     }
 

@@ -54,3 +54,27 @@ export async function loadListStatuses(listId: string): Promise<StatusDef[]> {
   await cacheListStatuses(listId, fresh);
   return fresh;
 }
+
+// --- Fase 2: verificação via Claude --------------------------------------
+
+export interface AskResult {
+  valid: boolean;
+  resposta: string;
+  acao: "marcar_feito" | "mudar_status" | "nada" | string;
+  status_alvo: string | null;
+  evidencia: string;
+  confianca: "alta" | "media" | "baixa" | string;
+  raw: string;
+}
+
+export const anthropicStatus = () => invoke<boolean>("anthropic_status");
+export const saveAnthropicKey = (key: string) => invoke<void>("save_anthropic_key", { key });
+export const clearAnthropicKey = () => invoke<void>("clear_anthropic_key");
+
+export const githubStatus = () => invoke<boolean>("github_status");
+export const saveGithubToken = (token: string) => invoke<void>("save_github_token", { token });
+export const clearGithubToken = () => invoke<void>("clear_github_token");
+
+/** Pergunta em linguagem natural sobre uma task (roda o loop de tools no Rust). */
+export const askTask = (taskId: string, question: string) =>
+  invoke<AskResult>("ask_task", { taskId, question });
