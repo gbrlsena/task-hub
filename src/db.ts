@@ -71,10 +71,38 @@ export async function pruneStale(syncedAt: number): Promise<void> {
   await db.execute("DELETE FROM task_cache WHERE fetched_at < $1", [syncedAt]);
 }
 
+/** Task lida do cache local para exibição (sem `raw`/`assignees`). */
+export interface CachedTask {
+  id: string;
+  custom_id: string | null;
+  name: string;
+  status: string;
+  priority: number | null;
+  list_id: string;
+  list_name: string;
+  due_date: number | null;
+}
+
+/** Lê as tasks do cache, ordenadas por lista e depois por vencimento. */
+export async function getCachedTasks(): Promise<CachedTask[]> {
+  const db = await getDb();
+  return db.select<CachedTask[]>(
+    `SELECT id, custom_id, name, status, priority, list_id, list_name, due_date
+     FROM task_cache
+     ORDER BY list_name, due_date IS NULL, due_date`,
+  );
+}
+
 export async function countCachedTasks(): Promise<number> {
   const db = await getDb();
   const rows = await db.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM task_cache");
   return rows[0]?.n ?? 0;
+}
+
+/** Esvazia o cache de tasks (ex.: ao trocar o board, o escopo muda). */
+export async function clearTasks(): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM task_cache");
 }
 
 /** Timestamp do sync mais recente (max fetched_at), ou null se vazio. */

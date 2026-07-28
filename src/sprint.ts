@@ -37,3 +37,40 @@ export function parseListMeta(listName: string, now: Date = new Date()): ListMet
     endsAt: parseDayMonth(match[3], now),
   };
 }
+
+export interface SprintGroup<T> {
+  key: string;
+  title: string;
+  meta: ListMeta;
+  tasks: T[];
+}
+
+/**
+ * Agrupa itens (que carregam `list_name`) por sprint. Sprints saem primeiro,
+ * ordenados por número decrescente (mais recente no topo); listas fora do
+ * padrão viram grupos "other" no fim, uma por nome de lista.
+ */
+export function groupBySprint<T extends { list_name: string }>(
+  items: T[],
+  now: Date = new Date(),
+): SprintGroup<T>[] {
+  const groups = new Map<string, SprintGroup<T>>();
+
+  for (const item of items) {
+    const meta = parseListMeta(item.list_name, now);
+    const key = meta.kind === "sprint" ? `sprint-${meta.number}` : `other-${item.list_name}`;
+    const title = meta.kind === "sprint" ? `Sprint ${meta.number}` : item.list_name || "Outros";
+
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, title, meta, tasks: [] };
+      groups.set(key, group);
+    }
+    group.tasks.push(item);
+  }
+
+  const sprintNumber = (g: SprintGroup<T>) =>
+    g.meta.kind === "sprint" ? g.meta.number : -Infinity;
+
+  return [...groups.values()].sort((a, b) => sprintNumber(b) - sprintNumber(a));
+}

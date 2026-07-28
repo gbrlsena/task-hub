@@ -1,7 +1,7 @@
 mod clickup;
 mod secret;
 
-use clickup::{Team, TaskDto};
+use clickup::{FolderRef, TaskDto, Team};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Ha um token do ClickUp salvo no cofre?
@@ -45,10 +45,18 @@ async fn get_teams() -> Result<Vec<Team>, String> {
     clickup::get_teams(&token).await
 }
 
-/// Sync completo das tasks abertas do usuario (paginado, um unico fetch).
-/// Usa o primeiro workspace; o SQLite fica a cargo do frontend (via plugin sql).
+/// Resolve o folder escolhido (id -> nome) para exibir o board na UI.
 #[tauri::command]
-async fn sync_open_tasks() -> Result<Vec<TaskDto>, String> {
+async fn get_folder(folder_id: String) -> Result<FolderRef, String> {
+    let token = secret::read()?
+        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
+    clickup::get_folder(&token, &folder_id).await
+}
+
+/// Sync das tasks abertas do usuario dentro do folder escolhido (paginado,
+/// um unico fetch). Usa o primeiro workspace; o SQLite fica a cargo do frontend.
+#[tauri::command]
+async fn sync_open_tasks(folder_id: String) -> Result<Vec<TaskDto>, String> {
     let token = secret::read()?
         .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
 
@@ -58,7 +66,7 @@ async fn sync_open_tasks() -> Result<Vec<TaskDto>, String> {
         .ok_or_else(|| "Nenhum workspace disponivel para este token.".to_string())?;
 
     let assignee_id = clickup::get_authorized_user_id(&token).await?;
-    clickup::fetch_open_tasks(&token, &team.id, assignee_id).await
+    clickup::fetch_open_tasks(&token, &team.id, assignee_id, &folder_id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -82,6 +90,7 @@ pub fn run() {
             save_clickup_token,
             clear_clickup_token,
             get_teams,
+            get_folder,
             sync_open_tasks
         ])
         .run(tauri::generate_context!())

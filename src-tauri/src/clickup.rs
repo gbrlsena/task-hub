@@ -125,19 +125,95 @@ fn parse_task(t: &serde_json::Value) -> Option<TaskDto> {
     })
 }
 
-/// Pagina `GET /team/{team_id}/task` filtrando pelo assignee, ate vir vazio.
-/// Um unico fetch paginado (nunca um request por task). Backoff em 429 lendo
-/// `Retry-After` quando presente (spec §1.1).
+/// Folder (o "board" que o usuario escolhe). `space` opcional so para exibir.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderRef {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub space_name: Option<String>,
+}
+
+/// `GET /api/v2/folder/{folder_id}` — resolve id -> nome (para exibir o board).
+pub async fn get_folder(token: &str, folder_id: &str) -> Result<FolderRef, String> {
+    let resp = reqwest::Client::new()
+        .get(format!("{API_BASE}/folder/{folder_id}"))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao ler o folder: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Nao foi possivel abrir o folder {folder_id} (HTTP {}).",
+            resp.status()
+        ));
+    }
+
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada ao ler o folder: {e}"))?;
+
+    Ok(FolderRef {
+        id: v["id"].as_str().unwrap_or(folder_id).to_string(),
+        name: v["name"].as_str().unwrap_or("(folder)").to_string(),
+        space_name: v["space"]["name"].as_str().map(str::to_string),
+    })
+}
+
+/// `GET /api/v2/folder/{folder_id}/list` — ids das listas (sprints) do folder.
+async fn get_folder_list_ids(token: &str, folder_id: &str) -> Result<Vec<String>, String> {
+    let resp = reqwest::Client::new()
+        .get(format!("{API_BASE}/folder/{folder_id}/list"))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao listar as listas do folder: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Nao foi possivel listar as listas do folder {folder_id} (HTTP {}).",
+            resp.status()
+        ));
+    }
+
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada ao listar as listas do folder: {e}"))?;
+
+    Ok(v["lists"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|l| l["id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// Sync das tasks abertas do usuario DENTRO de um folder (o board escolhido),
+/// paginado ate vir vazio. Escopa por `list_ids[]` das listas do folder — um
+/// unico fetch paginado, nunca um request por task. Backoff em 429 (§1.1).
 pub async fn fetch_open_tasks(
     token: &str,
     team_id: &str,
     assignee_id: i64,
+    folder_id: &str,
 ) -> Result<Vec<TaskDto>, String> {
+    let list_ids = get_folder_list_ids(token, folder_id).await?;
+    if list_ids.is_empty() {
+        return Err(format!(
+            "O folder {folder_id} nao tem listas visiveis para este token."
+        ));
+    }
+
     let client = reqwest::Client::new();
     let mut out = Vec::new();
 
     for page in 0..MAX_PAGES {
-        let value = get_task_page(&client, token, team_id, assignee_id, page).await?;
+        let value = get_task_page(&client, token, team_id, assignee_id, &list_ids, page).await?;
         let tasks = value["tasks"].as_array().cloned().unwrap_or_default();
         if tasks.is_empty() {
             break;
@@ -154,20 +230,27 @@ async fn get_task_page(
     token: &str,
     team_id: &str,
     assignee_id: i64,
+    list_ids: &[String],
     page: u32,
 ) -> Result<serde_json::Value, String> {
     let url = format!("{API_BASE}/team/{team_id}/task");
+
+    // list_ids[] repetido, um por lista do folder.
+    let mut params: Vec<(String, String)> = vec![
+        ("assignees[]".to_string(), assignee_id.to_string()),
+        ("include_closed".to_string(), "false".to_string()),
+        ("subtasks".to_string(), "true".to_string()),
+        ("page".to_string(), page.to_string()),
+    ];
+    for id in list_ids {
+        params.push(("list_ids[]".to_string(), id.clone()));
+    }
 
     for attempt in 0..=MAX_429_RETRIES {
         let resp = client
             .get(&url)
             .header("Authorization", token)
-            .query(&[
-                ("assignees[]", assignee_id.to_string()),
-                ("include_closed", "false".to_string()),
-                ("subtasks", "true".to_string()),
-                ("page", page.to_string()),
-            ])
+            .query(&params)
             .send()
             .await
             .map_err(|e| format!("Falha de rede ao paginar tasks: {e}"))?;

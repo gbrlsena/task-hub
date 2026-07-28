@@ -1,106 +1,137 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   clearToken,
-  getTeams,
+  getFolder,
   saveToken,
   syncOpenTasks,
   tokenStatus,
-  type Team,
+  type FolderRef,
 } from "./api";
 import {
   cacheTasks,
-  countCachedTasks,
+  clearTasks,
+  getCachedTasks,
   lastFetchedAt,
   pruneStale,
   TASK_TTL_MS,
+  type CachedTask,
 } from "./db";
+import { groupBySprint } from "./sprint";
 import "./App.css";
 
-type Screen =
-  | { kind: "loading" }
-  | { kind: "token" }
-  | { kind: "workspaces" };
+type Screen = { kind: "loading" } | { kind: "token" } | { kind: "board" };
+
+// Board inicial (folder "Revenue Sprints"); trocável e persistido em localStorage.
+const DEFAULT_FOLDER_ID = "90118026854";
+const FOLDER_KEY = "taskhub.folderId";
+
+function loadFolderId(): string {
+  return localStorage.getItem(FOLDER_KEY) ?? DEFAULT_FOLDER_ID;
+}
+
+/** Aceita a URL do folder (.../v/f/{id}/...) ou o id cru. */
+function parseFolderId(input: string): string | null {
+  const s = input.trim();
+  const fromUrl = s.match(/\/f\/(\d+)/);
+  if (fromUrl) return fromUrl[1];
+  if (/^\d+$/.test(s)) return s;
+  return null;
+}
+
+function fmtDM(d: Date): string {
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+}
 
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
 
-  // Estado da tela de token
+  // Tela de token
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // Estado da tela de workspaces
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [teamsError, setTeamsError] = useState<string | null>(null);
-  const [loadingTeams, setLoadingTeams] = useState(false);
+  // Board (folder)
+  const [folderId, setFolderId] = useState<string>(loadFolderId());
+  const [folder, setFolder] = useState<FolderRef | null>(null);
+  const [editingBoard, setEditingBoard] = useState(false);
+  const [folderInput, setFolderInput] = useState("");
+  const [boardError, setBoardError] = useState<string | null>(null);
 
-  // Estado do sync / cache local
-  const [taskCount, setTaskCount] = useState<number | null>(null);
+  // Sync / cache
+  const [tasks, setTasks] = useState<CachedTask[]>([]);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Ao abrir: existe token salvo? decide a tela inicial.
+  const groups = useMemo(() => groupBySprint(tasks), [tasks]);
+
+  // Tela inicial: existe token salvo?
   useEffect(() => {
     tokenStatus()
-      .then((has) => setScreen(has ? { kind: "workspaces" } : { kind: "token" }))
+      .then((has) => setScreen(has ? { kind: "board" } : { kind: "token" }))
       .catch(() => setScreen({ kind: "token" }));
   }, []);
 
-  // Sempre que cair na tela de workspaces, busca os teams.
+  // Ao entrar no board (ou trocar de folder): resolve o nome e carrega o cache.
   useEffect(() => {
-    if (screen.kind !== "workspaces") return;
+    if (screen.kind !== "board") return;
     let alive = true;
-    setLoadingTeams(true);
-    setTeamsError(null);
-    getTeams()
-      .then((t) => {
-        if (alive) setTeams(t);
-      })
-      .catch((e: unknown) => {
-        if (alive) setTeamsError(String(e));
-      })
-      .finally(() => {
-        if (alive) setLoadingTeams(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [screen.kind]);
 
-  // Ao entrar na tela de workspaces, carrega o estado do cache local.
-  useEffect(() => {
-    if (screen.kind !== "workspaces") return;
-    let alive = true;
-    Promise.all([countCachedTasks(), lastFetchedAt()])
-      .then(([count, last]) => {
+    getFolder(folderId)
+      .then((f) => alive && setFolder(f))
+      .catch(() => alive && setFolder(null));
+
+    Promise.all([getCachedTasks(), lastFetchedAt()])
+      .then(([rows, last]) => {
         if (!alive) return;
-        setTaskCount(count);
+        setTasks(rows);
         setLastSync(last);
       })
-      .catch(() => {
-        /* cache vazio/erro de leitura: ignorável, o sync recupera */
-      });
+      .catch(() => {});
+
     return () => {
       alive = false;
     };
-  }, [screen.kind]);
+  }, [screen.kind, folderId]);
+
+  async function reloadCache() {
+    setTasks(await getCachedTasks());
+    setLastSync(await lastFetchedAt());
+  }
 
   async function handleSync() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const tasks = await syncOpenTasks();
+      const fetched = await syncOpenTasks(folderId);
       const now = Date.now();
-      await cacheTasks(tasks, now);
+      await cacheTasks(fetched, now);
       await pruneStale(now);
-      setTaskCount(await countCachedTasks());
-      setLastSync(await lastFetchedAt());
+      await reloadCache();
     } catch (err) {
       setSyncError(String(err));
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function handleApplyFolder(e: React.FormEvent) {
+    e.preventDefault();
+    const id = parseFolderId(folderInput);
+    if (!id) {
+      setBoardError("Não reconheci um id ou URL de folder do ClickUp.");
+      return;
+    }
+    localStorage.setItem(FOLDER_KEY, id);
+    setBoardError(null);
+    setEditingBoard(false);
+    setFolderInput("");
+    setFolder(null);
+    // Escopo mudou: limpa o cache do board anterior.
+    await clearTasks();
+    setTasks([]);
+    setLastSync(null);
+    setFolderId(id);
   }
 
   async function handleSaveToken(e: React.FormEvent) {
@@ -110,7 +141,7 @@ function App() {
     try {
       await saveToken(token);
       setToken("");
-      setScreen({ kind: "workspaces" });
+      setScreen({ kind: "board" });
     } catch (err) {
       setTokenError(String(err));
     } finally {
@@ -120,8 +151,7 @@ function App() {
 
   async function handleChangeToken() {
     await clearToken();
-    setTeams([]);
-    setTaskCount(null);
+    setTasks([]);
     setLastSync(null);
     setSyncError(null);
     setScreen({ kind: "token" });
@@ -168,48 +198,39 @@ function App() {
     );
   }
 
-  // screen.kind === "workspaces"
+  // screen.kind === "board"
   return (
     <main className="app">
       <header className="app-header">
         <h1>Task Hub</h1>
-        <p className="muted">Workspaces disponíveis para este token.</p>
       </header>
 
-      {loadingTeams && <p className="muted">Buscando workspaces…</p>}
-
-      {teamsError && (
-        <div className="error-box">
-          <p className="error">{teamsError}</p>
-          <button onClick={() => setScreen({ kind: "workspaces" })}>
-            Tentar de novo
-          </button>
+      <section className="board-bar">
+        <div className="board-id">
+          <span className="muted">Board</span>
+          <span className="board-name">{folder?.name ?? `folder ${folderId}`}</span>
+          {folder?.space_name && <span className="muted">{folder.space_name}</span>}
         </div>
-      )}
+        <button className="link" onClick={() => setEditingBoard((v) => !v)}>
+          {editingBoard ? "cancelar" : "trocar"}
+        </button>
+      </section>
 
-      {!loadingTeams && !teamsError && (
-        <ul className="team-list">
-          {teams.map((t) => (
-            <li key={t.id} className="team">
-              <span
-                className="team-dot"
-                style={{ background: t.color ?? "#8b8b8b" }}
-              />
-              <span className="team-name">{t.name}</span>
-              <span className="team-id muted">{t.id}</span>
-            </li>
-          ))}
-          {teams.length === 0 && (
-            <li className="muted">Nenhum workspace retornado.</li>
-          )}
-        </ul>
+      {editingBoard && (
+        <form className="board-edit" onSubmit={handleApplyFolder}>
+          <input
+            placeholder="Cole a URL ou o id do folder do ClickUp"
+            value={folderInput}
+            onChange={(e) => setFolderInput(e.currentTarget.value)}
+          />
+          {boardError && <p className="error">{boardError}</p>}
+          <button type="submit">Aplicar board</button>
+        </form>
       )}
 
       <section className="sync-panel">
         <div className="sync-stats">
-          <span className="sync-count">
-            {taskCount === null ? "—" : taskCount} tasks em cache
-          </span>
+          <span className="sync-count">{tasks.length} tasks</span>
           <span className="muted">{formatLastSync(lastSync)}</span>
         </div>
         {syncError && <p className="error">{syncError}</p>}
@@ -217,6 +238,37 @@ function App() {
           {syncing ? "Sincronizando…" : "Sincronizar tarefas"}
         </button>
       </section>
+
+      {groups.length === 0 && !syncing && (
+        <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
+      )}
+
+      {groups.map((g) => (
+        <section key={g.key} className="sprint-group">
+          <header className="sprint-header">
+            <span className="sprint-title">{g.title}</span>
+            {g.meta.kind === "sprint" && (
+              <span className="muted">
+                {fmtDM(g.meta.startsAt)}–{fmtDM(g.meta.endsAt)}
+              </span>
+            )}
+            <span className="sprint-count muted">{g.tasks.length}</span>
+          </header>
+          <ul className="task-list">
+            {g.tasks.map((t) => (
+              <li key={t.id} className="task-card">
+                <div className="task-main">
+                  <span className="task-name">{t.name}</span>
+                  <span className="status-pill">{t.status || "—"}</span>
+                </div>
+                <div className="task-meta muted">
+                  {t.custom_id ?? t.id} · {t.list_name}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
 
       <footer className="app-footer">
         <button className="link" onClick={handleChangeToken}>
@@ -229,8 +281,7 @@ function App() {
 
 function formatLastSync(ts: number | null): string {
   if (ts === null) return "nunca sincronizado";
-  const ageMs = Date.now() - ts;
-  const fresh = ageMs < TASK_TTL_MS;
+  const fresh = Date.now() - ts < TASK_TTL_MS;
   const when = new Date(ts).toLocaleTimeString();
   return fresh ? `sincronizado ${when} (recente)` : `desatualizado — último: ${when}`;
 }

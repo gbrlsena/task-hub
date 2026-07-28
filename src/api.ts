@@ -9,6 +9,13 @@ export interface Team {
   avatar?: string | null;
 }
 
+/** Folder do ClickUp — o "board" de onde vêm as tasks. */
+export interface FolderRef {
+  id: string;
+  name: string;
+  space_name?: string | null;
+}
+
 /** Ha um token salvo no cofre nativo? */
 export const tokenStatus = () => invoke<boolean>("token_status");
 
@@ -22,5 +29,10 @@ export const clearToken = () => invoke<void>("clear_clickup_token");
 /** GET /api/v2/team usando o token do cofre. */
 export const getTeams = () => invoke<Team[]>("get_teams");
 
-/** Sync paginado das tasks abertas do usuário (lado Rust). */
-export const syncOpenTasks = () => invoke<SyncedTask[]>("sync_open_tasks");
+/** Resolve o folder escolhido (id → nome) para exibir o board. */
+export const getFolder = (folderId: string) =>
+  invoke<FolderRef>("get_folder", { folderId });
+
+/** Sync paginado das tasks abertas do usuário dentro do folder (lado Rust). */
+export const syncOpenTasks = (folderId: string) =>
+  invoke<SyncedTask[]>("sync_open_tasks", { folderId });

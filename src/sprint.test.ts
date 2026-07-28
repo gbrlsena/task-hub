@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseListMeta } from "./sprint";
+import { groupBySprint, parseListMeta } from "./sprint";
 
 // Datas de referência fixas para tornar a inferência de ano determinística.
 const JUL_28_2026 = new Date(2026, 6, 28);
@@ -49,5 +49,23 @@ describe("parseListMeta", () => {
     if (meta.kind !== "sprint") return;
     expect(meta.startsAt).toEqual(new Date(2025, 8, 1));
     expect(meta.endsAt).toEqual(new Date(2025, 8, 7));
+  });
+});
+
+describe("groupBySprint", () => {
+  const t = (list_name: string, id: string) => ({ list_name, id });
+
+  it("agrupa por sprint, mais recente primeiro, e joga não-sprint pro fim", () => {
+    const items = [
+      t("Revenue Sprint 4 (6/23 - 6/29)", "a"),
+      t("Backlog", "b"),
+      t("Revenue Sprint 8 (7/21 - 8/3)", "c"),
+      t("Revenue Sprint 4 (6/23 - 6/29)", "d"),
+    ];
+    const groups = groupBySprint(items, JUL_28_2026);
+
+    expect(groups.map((g) => g.title)).toEqual(["Sprint 8", "Sprint 4", "Backlog"]);
+    // Sprint 4 acumulou as duas tasks da mesma lista.
+    expect(groups[1].tasks.map((x) => x.id)).toEqual(["a", "d"]);
   });
 });
