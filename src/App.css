@@ -1,7 +1,40 @@
 :root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
+  color-scheme: light;
+
+  /* Papel quente + tinta ardósia fria (assinatura do hallmark) */
+  --paper: oklch(97% 0.012 95);
+  --paper-2: oklch(94.5% 0.015 92);
+  --paper-3: oklch(91% 0.02 90);
+  --ink: oklch(23% 0.014 250);
+  --ink-2: oklch(33% 0.015 250);
+  --muted: oklch(50% 0.016 250);
+  --faint: oklch(62% 0.014 250);
+  --rule: oklch(87% 0.013 90);
+  --rule-2: oklch(79% 0.015 88);
+
+  /* Acento primário da UI (pêra) — usado com parcimônia */
+  --accent: oklch(86% 0.18 95);
+  --accent-deep: oklch(55% 0.12 96);
+  --accent-tint: oklch(86% 0.18 95 / 0.22);
+
+  /* Papéis de status (tint suave + texto forte) */
+  --st-accent: oklch(46% 0.15 240); /* in progress */
+  --st-accent-bg: oklch(66% 0.17 240 / 0.14);
+  --danger: oklch(52% 0.2 22); /* blocker / atraso / urgent */
+  --danger-bg: oklch(68% 0.22 22 / 0.12);
+  --warning: oklch(48% 0.1 68); /* testing / a refinar */
+  --warning-bg: oklch(80% 0.14 78 / 0.22);
+  --lav: oklch(50% 0.15 300); /* lembrete */
+  --lav-bg: oklch(74% 0.16 300 / 0.16);
+
+  --focus: oklch(66% 0.18 235);
+  --radius: 12px;
+  --radius-card: 14px;
+  --shadow-card: 0 10px 26px -18px oklch(23% 0.014 250 / 0.2),
+    0 1px 2px oklch(23% 0.014 250 / 0.06);
+  --font-body: "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Code", monospace;
+  --track-label: 0.14em;
 }
 
 * {
@@ -10,43 +43,58 @@
 
 body {
   margin: 0;
-  background: #16161a;
-  color: #e6e6e6;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   padding: 20px;
   min-height: 100vh;
 }
 
 .app-header h1 {
-  margin: 0 0 2px;
-  font-size: 20px;
+  margin: 0;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .muted {
-  color: #9a9a9a;
+  color: var(--muted);
   margin: 0;
 }
 
+/* Rótulo em maiúscula-mono (label do bilhete) */
+.eyebrow,
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .hint {
-  color: #9a9a9a;
+  color: var(--muted);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
   margin: 0;
 }
 
 .hint code,
-.team-id {
-  font-family: ui-monospace, "Cascadia Code", monospace;
+.task-meta {
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--danger);
   margin: 0;
   font-size: 13px;
 }
@@ -57,7 +105,82 @@ body {
   gap: 8px;
 }
 
-/* Formulario de token */
+/* Inputs e botões */
+input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule-2);
+  background: var(--paper);
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+input::placeholder {
+  color: var(--faint);
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--st-accent-bg);
+}
+
+button {
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule-2);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--paper-3);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--st-accent-bg);
+}
+
+/* Ação primária (pêra) */
+.sync-panel button,
+.token-form button[type="submit"] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.sync-panel button:hover,
+.token-form button[type="submit"]:hover {
+  background: var(--accent-deep);
+  color: var(--paper);
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent-deep);
+  padding: 0;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+button.link.danger {
+  color: var(--danger);
+}
+
+/* Formulário de token */
 .token-form {
   display: flex;
   flex-direction: column;
@@ -68,101 +191,7 @@ body {
   font-weight: 600;
 }
 
-input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #33333a;
-  background: #1f1f26;
-  color: inherit;
-  font-size: 14px;
-}
-
-input:focus {
-  outline: none;
-  border-color: #6c7bff;
-}
-
-button {
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: none;
-  background: #6c7bff;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-button.link {
-  background: none;
-  color: #9aa4ff;
-  padding: 0;
-  font-weight: 500;
-}
-
-/* Lista de workspaces */
-.team-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.team {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #1f1f26;
-}
-
-.team-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex: none;
-}
-
-.team-name {
-  font-weight: 600;
-}
-
-.team-id {
-  margin-left: auto;
-}
-
-/* Painel de sync */
-.sync-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 10px;
-  background: #1f1f26;
-  border: 1px solid #2a2a32;
-}
-
-.sync-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sync-count {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-/* Barra de board (folder) */
+/* Board */
 .board-bar {
   display: flex;
   align-items: center;
@@ -173,13 +202,14 @@ button.link {
 .board-id {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
 .board-name {
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
 }
 
 .board-edit {
@@ -188,80 +218,34 @@ button.link {
   gap: 8px;
 }
 
-/* Grupos de sprint */
-.sprint-group {
+/* Painel de sync */
+.sync-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
 }
 
-.sprint-header {
+.sync-stats {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 2px;
-  border-bottom: 1px solid #2a2a32;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.sprint-title {
+.sync-count {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
-.sprint-count {
-  margin-left: auto;
-}
-
-.task-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.task-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #1f1f26;
-}
-
-.task-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-name {
-  font-weight: 500;
-  flex: 1;
-  min-width: 0;
-}
-
-.status-pill {
-  flex: none;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #2f2f3a;
-  color: #cfcfe0;
-  white-space: nowrap;
-}
-
-.task-meta {
-  font-size: 12px;
-  font-family: ui-monospace, "Cascadia Code", monospace;
-}
-
-/* Barra de métricas */
+/* Métricas */
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-  gap: 6px;
+  gap: 7px;
 }
 
 .metric {
@@ -269,33 +253,36 @@ button.link {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 8px 4px;
-  background: #1f1f26;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 9px 4px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-weight: 400;
+}
+
+.metric:hover {
+  background: var(--paper-3);
 }
 
 .metric.active {
-  border-color: #6c7bff;
+  border-color: var(--accent-deep);
+  background: var(--accent-tint);
 }
 
 .metric-value {
   font-size: 20px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-value.accent {
-  color: #9db4ff;
+  color: var(--st-accent);
 }
 .metric-value.danger {
-  color: #ff8f9a;
+  color: var(--danger);
 }
 .metric-value.warning {
-  color: #ffcf8f;
-}
-
-.metric-label {
-  font-size: 11px;
+  color: var(--warning);
 }
 
 .metrics-aux {
@@ -310,20 +297,19 @@ button.link {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 2px;
-  border-bottom: 1px solid #2a2a32;
 }
 
 .nav-arrow {
   flex: none;
   width: 34px;
-  padding: 4px 0;
+  height: 34px;
+  padding: 0;
   font-size: 18px;
-  background: #2a2a32;
+  background: var(--paper-2);
 }
 
 .nav-arrow:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
 }
 
 .sprint-nav-label {
@@ -337,6 +323,14 @@ button.link {
 
 .sprint-title {
   font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.sprint-nav-label .muted {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 /* Pills */
@@ -346,59 +340,87 @@ button.link {
   gap: 6px;
 }
 
-.pill {
+.pill,
+.status-pill {
   font-size: 11px;
-  padding: 2px 8px;
+  font-weight: 500;
+  padding: 2px 9px;
   border-radius: 999px;
   white-space: nowrap;
 }
 
 .status-pill {
   flex: none;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  background: #2f2f3a;
-  color: #cfcfe0;
+  background: var(--paper-3);
+  color: var(--ink-2);
 }
 
-/* Papéis de cor do status (§1.3) */
 .role-danger {
-  background: #4a1f24;
-  color: #ff8f9a;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .role-accent {
-  background: #1f2b4a;
-  color: #9db4ff;
+  background: var(--st-accent-bg);
+  color: var(--st-accent);
 }
 .role-warning {
-  background: #4a3a1f;
-  color: #ffcf8f;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 .role-neutral {
-  background: #2f2f3a;
-  color: #cfcfe0;
+  background: var(--paper-3);
+  color: var(--ink-2);
 }
 
-.prio-urgent {
-  background: #4a1f24;
-  color: #ff8f9a;
-}
-.prio-high {
-  background: #4a331f;
-  color: #ffc08f;
-}
+.prio-urgent,
+.prio-high,
 .pill-late {
-  background: #4a1f24;
-  color: #ff8f9a;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .pill-reminder {
-  background: #3a2f4a;
-  color: #d3b4ff;
+  background: var(--lav-bg);
+  color: var(--lav);
 }
 
-/* Ações e subtasks */
+/* Cards de task */
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 13px;
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-card);
+}
+
+.task-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-name {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.task-meta {
+  color: var(--muted);
+}
+
 .task-actions {
   display: flex;
   gap: 14px;
@@ -406,19 +428,23 @@ button.link {
 }
 
 .subtask-list {
-  margin-top: 6px;
-  border-left: 2px solid #2a2a32;
-  padding-left: 6px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--rule-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* Painel de anotações: log + composer + chips */
+/* Painel de anotações */
 .notes-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 10px;
-  border-radius: 8px;
-  background: #17171c;
+  border-radius: var(--radius);
+  background: var(--paper-2);
 }
 
 .timeline {
@@ -439,27 +465,37 @@ button.link {
 }
 
 .entry-comment {
-  border-left: 2px solid #33333a;
-  padding-left: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
 }
 
 .entry-reminder {
   padding: 6px 8px;
-  border-radius: 6px;
-  background: #1f1f26;
+  border-radius: 8px;
+  background: var(--lav-bg);
 }
 
 .entry-reminder.due {
-  background: #4a1f24;
+  background: var(--danger-bg);
 }
 
 .entry-reminder.due .entry-body,
 .entry-reminder.due .entry-meta {
-  color: #ff8f9a;
+  color: var(--danger);
 }
 
 .bell {
-  color: #d3b4ff;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lav);
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+.entry-reminder.due .bell {
+  background: var(--danger);
 }
 
 .entry-body {
@@ -472,6 +508,7 @@ button.link {
   align-items: center;
   gap: 8px;
   font-size: 11px;
+  color: var(--muted);
   margin-top: 3px;
 }
 
@@ -481,14 +518,15 @@ button.link {
   flex: none;
 }
 
-/* Composer: um campo só */
+/* Composer */
 .composer {
   display: flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid #33333a;
-  border-radius: 8px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
   padding: 2px 4px 2px 10px;
+  background: var(--paper);
 }
 
 .composer input {
@@ -501,18 +539,19 @@ button.link {
 
 .composer input:focus {
   outline: none;
+  box-shadow: none;
 }
 
 .composer-icon {
   flex: none;
   background: none;
-  color: #9aa4ff;
+  border: none;
+  color: var(--accent-deep);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   padding: 4px 8px;
 }
 
-/* Chips de lembrete (data relativa; date picker atrás do último) */
 .reminder-chips {
   display: flex;
   align-items: center;
@@ -524,24 +563,21 @@ button.link {
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 999px;
-  background: none;
-  border: 1px solid #33333a;
-  color: #cfcfe0;
-  font-weight: 400;
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  color: var(--ink-2);
+  font-weight: 500;
 }
 
 .chip:hover {
-  border-color: #6c7bff;
+  border-color: var(--accent-deep);
+  background: var(--paper);
 }
 
 .chip-picker {
   width: auto;
   padding: 4px 8px;
   font-size: 12px;
-}
-
-button.link.danger {
-  color: #ff8f9a;
 }
 
 .app-footer {

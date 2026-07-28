@@ -162,7 +162,7 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
                   }`}
                 >
                   <div className="entry-body">
-                    <span className="bell">◔</span> {e.r.body ?? "lembrete"}
+                    <span className="bell" aria-hidden="true" /> {e.r.body ?? "lembrete"}
                   </div>
                   <div className="entry-meta muted">
                     <span>

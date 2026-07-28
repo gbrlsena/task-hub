@@ -257,7 +257,7 @@ function App() {
 
       <section className="board-bar">
         <div className="board-id">
-          <span className="muted">Board</span>
+          <span className="eyebrow">Board</span>
           <span className="board-name">{folder?.name ?? `folder ${folderId}`}</span>
           {folder?.space_name && <span className="muted">{folder.space_name}</span>}
         </div>
