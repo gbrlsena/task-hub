@@ -140,6 +140,28 @@ button.link {
   margin-left: auto;
 }
 
+/* Painel de sync */
+.sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #1f1f26;
+  border: 1px solid #2a2a32;
+}
+
+.sync-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sync-count {
+  font-weight: 600;
+  font-size: 16px;
+}
+
 .app-footer {
   margin-top: auto;
 }

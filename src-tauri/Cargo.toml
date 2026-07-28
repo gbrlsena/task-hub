@@ -20,12 +20,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # HTTP feito no lado Rust (regra dura do spec: nenhuma chamada HTTP direto do frontend).
 # native-tls usa a stack TLS do SO: SChannel no Windows (sem deps extras) e
 # OpenSSL no Linux (Mint precisa de libssl-dev instalado para buildar).
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+# Só para o sleep do backoff em 429; Tauri já roda em cima do tokio.
+tokio = { version = "1", features = ["time"] }
 
 # keyring 3.x exige habilitar o backend por plataforma explicitamente.
 # Windows (maquina de build atual): Credential Manager nativo.

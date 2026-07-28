@@ -1,5 +1,19 @@
 import { useEffect, useState } from "react";
-import { clearToken, getTeams, saveToken, tokenStatus, type Team } from "./api";
+import {
+  clearToken,
+  getTeams,
+  saveToken,
+  syncOpenTasks,
+  tokenStatus,
+  type Team,
+} from "./api";
+import {
+  cacheTasks,
+  countCachedTasks,
+  lastFetchedAt,
+  pruneStale,
+  TASK_TTL_MS,
+} from "./db";
 import "./App.css";
 
 type Screen =
@@ -19,6 +33,12 @@ function App() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [loadingTeams, setLoadingTeams] = useState(false);
+
+  // Estado do sync / cache local
+  const [taskCount, setTaskCount] = useState<number | null>(null);
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Ao abrir: existe token salvo? decide a tela inicial.
   useEffect(() => {
@@ -48,6 +68,41 @@ function App() {
     };
   }, [screen.kind]);
 
+  // Ao entrar na tela de workspaces, carrega o estado do cache local.
+  useEffect(() => {
+    if (screen.kind !== "workspaces") return;
+    let alive = true;
+    Promise.all([countCachedTasks(), lastFetchedAt()])
+      .then(([count, last]) => {
+        if (!alive) return;
+        setTaskCount(count);
+        setLastSync(last);
+      })
+      .catch(() => {
+        /* cache vazio/erro de leitura: ignorável, o sync recupera */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [screen.kind]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const tasks = await syncOpenTasks();
+      const now = Date.now();
+      await cacheTasks(tasks, now);
+      await pruneStale(now);
+      setTaskCount(await countCachedTasks());
+      setLastSync(await lastFetchedAt());
+    } catch (err) {
+      setSyncError(String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function handleSaveToken(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -66,6 +121,9 @@ function App() {
   async function handleChangeToken() {
     await clearToken();
     setTeams([]);
+    setTaskCount(null);
+    setLastSync(null);
+    setSyncError(null);
     setScreen({ kind: "token" });
   }
 
@@ -147,6 +205,19 @@ function App() {
         </ul>
       )}
 
+      <section className="sync-panel">
+        <div className="sync-stats">
+          <span className="sync-count">
+            {taskCount === null ? "—" : taskCount} tasks em cache
+          </span>
+          <span className="muted">{formatLastSync(lastSync)}</span>
+        </div>
+        {syncError && <p className="error">{syncError}</p>}
+        <button onClick={handleSync} disabled={syncing}>
+          {syncing ? "Sincronizando…" : "Sincronizar tarefas"}
+        </button>
+      </section>
+
       <footer className="app-footer">
         <button className="link" onClick={handleChangeToken}>
           Trocar token
@@ -154,6 +225,14 @@ function App() {
       </footer>
     </main>
   );
+}
+
+function formatLastSync(ts: number | null): string {
+  if (ts === null) return "nunca sincronizado";
+  const ageMs = Date.now() - ts;
+  const fresh = ageMs < TASK_TTL_MS;
+  const when = new Date(ts).toLocaleTimeString();
+  return fresh ? `sincronizado ${when} (recente)` : `desatualizado — último: ${when}`;
 }
 
 export default App;

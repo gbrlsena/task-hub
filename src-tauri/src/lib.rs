@@ -1,7 +1,8 @@
 mod clickup;
 mod secret;
 
-use clickup::Team;
+use clickup::{Team, TaskDto};
+use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Ha um token do ClickUp salvo no cofre?
 #[tauri::command]
@@ -44,15 +45,44 @@ async fn get_teams() -> Result<Vec<Team>, String> {
     clickup::get_teams(&token).await
 }
 
+/// Sync completo das tasks abertas do usuario (paginado, um unico fetch).
+/// Usa o primeiro workspace; o SQLite fica a cargo do frontend (via plugin sql).
+#[tauri::command]
+async fn sync_open_tasks() -> Result<Vec<TaskDto>, String> {
+    let token = secret::read()?
+        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
+
+    let teams = clickup::get_teams(&token).await?;
+    let team = teams
+        .first()
+        .ok_or_else(|| "Nenhum workspace disponivel para este token.".to_string())?;
+
+    let assignee_id = clickup::get_authorized_user_id(&token).await?;
+    clickup::fetch_open_tasks(&token, &team.id, assignee_id).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let migrations = vec![Migration {
+        version: 1,
+        description: "create initial schema",
+        sql: include_str!("../migrations/0001_init.sql"),
+        kind: MigrationKind::Up,
+    }];
+
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations("sqlite:taskhub.db", migrations)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             token_status,
             save_clickup_token,
             clear_clickup_token,
-            get_teams
+            get_teams,
+            sync_open_tasks
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
