@@ -380,6 +380,61 @@ button.link.danger {
   color: var(--lav);
 }
 
+/* Status pill clicável + menu de troca */
+.pill,
+.status-pill {
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.status-pill {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.caret {
+  font-size: 9px;
+  opacity: 0.55;
+}
+
+.status-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-opt {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.status-opt.current {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 1px;
+}
+
+.link.pinned {
+  color: var(--accent-deep);
+}
+
+/* Meu foco */
+.foco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.foco-list {
+  margin: 0;
+  padding: 0;
+}
+
 /* Cards de task */
 .task-list {
   list-style: none;

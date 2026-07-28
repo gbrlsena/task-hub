@@ -208,3 +208,78 @@ export async function dueReminderSubjectIds(now: number): Promise<Set<string>> {
   );
   return new Set(rows.map((r) => r.subject_id));
 }
+
+// --- Statuses da list (cache 1h) ------------------------------------------
+
+export interface StatusDef {
+  status: string;
+  type: string; // open | custom | closed | done
+  orderindex: number;
+  color?: string | null;
+}
+
+/** TTL do cache de statuses por list (spec §1.3): ~1h. */
+export const LIST_STATUS_TTL_MS = 60 * 60 * 1000;
+
+export async function getCachedListStatuses(listId: string): Promise<StatusDef[] | null> {
+  const db = await getDb();
+  const rows = await db.select<{ statuses: string; fetched_at: number }[]>(
+    "SELECT statuses, fetched_at FROM list_status_cache WHERE list_id = $1",
+    [listId],
+  );
+  const row = rows[0];
+  if (!row || Date.now() - row.fetched_at > LIST_STATUS_TTL_MS) return null;
+  try {
+    return JSON.parse(row.statuses) as StatusDef[];
+  } catch {
+    return null;
+  }
+}
+
+export async function cacheListStatuses(listId: string, statuses: StatusDef[]): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO list_status_cache (list_id, statuses, fetched_at) VALUES ($1, $2, $3)
+     ON CONFLICT(list_id) DO UPDATE SET statuses = excluded.statuses, fetched_at = excluded.fetched_at`,
+    [listId, JSON.stringify(statuses), Date.now()],
+  );
+}
+
+/** Atualização otimista do status no cache local (antes/depois do PUT). */
+export async function updateTaskStatusLocal(
+  taskId: string,
+  status: string,
+  statusType: string,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute("UPDATE task_cache SET status = $2, status_type = $3 WHERE id = $1", [
+    taskId,
+    status,
+    statusType,
+  ]);
+}
+
+// --- Foco (pin), spec §1.5 ------------------------------------------------
+
+export async function getPinnedIds(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select<{ task_id: string }[]>(
+    "SELECT task_id FROM focus ORDER BY position, pinned_at",
+  );
+  return rows.map((r) => r.task_id);
+}
+
+export async function pinTask(taskId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO focus (task_id, position, pinned_at)
+     VALUES ($1, (SELECT COALESCE(MAX(position), 0) + 1 FROM focus), $2)
+     ON CONFLICT(task_id) DO NOTHING`,
+    [taskId, Date.now()],
+  );
+}
+
+export async function unpinTask(taskId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM focus WHERE task_id = $1", [taskId]);
+}

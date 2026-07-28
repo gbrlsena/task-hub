@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { loadListStatuses, setTaskStatus } from "./api";
 import {
   addComment,
   addReminder,
@@ -10,6 +11,7 @@ import {
   type CachedTask,
   type Comment,
   type Reminder,
+  type StatusDef,
 } from "./db";
 import {
   isLate,
@@ -26,6 +28,9 @@ interface Props {
   getChildren: (id: string) => CachedTask[];
   dueIds: Set<string>;
   onRemindersChanged: () => void;
+  pinnedIds: Set<string>;
+  onTogglePin: (id: string) => void;
+  onStatusChanged: (id: string, status: string, statusType: string) => void;
   depth?: number;
 }
 
@@ -40,7 +45,17 @@ const QUICK_CHIPS: { kind: QuickReminder; label: string }[] = [
   { kind: "mon9", label: "seg 9h" },
 ];
 
-function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: Props) {
+function TaskCard({
+  task,
+  getChildren,
+  dueIds,
+  onRemindersChanged,
+  pinnedIds,
+  onTogglePin,
+  onStatusChanged,
+  depth = 0,
+}: Props) {
+  const pinned = pinnedIds.has(task.id);
   const [showSubs, setShowSubs] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null);
@@ -48,6 +63,38 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
   const [text, setText] = useState("");
   const [showChips, setShowChips] = useState(false);
   const [pickAt, setPickAt] = useState("");
+
+  // Troca de status
+  const [statusMenu, setStatusMenu] = useState(false);
+  const [statuses, setStatuses] = useState<StatusDef[] | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  async function toggleStatusMenu() {
+    const next = !statusMenu;
+    setStatusMenu(next);
+    if (next && statuses === null) {
+      try {
+        setStatuses(await loadListStatuses(task.list_id));
+      } catch (e) {
+        setStatusError(String(e));
+      }
+    }
+  }
+
+  async function pickStatus(s: StatusDef) {
+    setStatusMenu(false);
+    if (s.status === task.status) return;
+    const prevStatus = task.status;
+    const prevType = task.status_type;
+    setStatusError(null);
+    onStatusChanged(task.id, s.status, s.type); // otimista
+    try {
+      await setTaskStatus(task.id, s.status);
+    } catch (e) {
+      onStatusChanged(task.id, prevStatus, prevType); // rollback
+      setStatusError(String(e));
+    }
+  }
 
   const children = getChildren(task.id);
   const late = isLate(task.due_date);
@@ -110,10 +157,32 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
     <li className="task-card" style={{ marginLeft: depth ? 16 : 0 }}>
       <div className="task-main">
         <span className="task-name">{task.name}</span>
-        <span className={`status-pill role-${statusRole(task.status)}`}>
-          {task.status || "—"}
-        </span>
+        <button
+          className={`status-pill role-${statusRole(task.status)}`}
+          onClick={toggleStatusMenu}
+          title="Mudar status"
+        >
+          {task.status || "—"} <span className="caret">▾</span>
+        </button>
       </div>
+
+      {statusMenu && (
+        <div className="status-menu">
+          {statuses === null && !statusError && <span className="muted">carregando…</span>}
+          {statuses?.map((s) => (
+            <button
+              key={s.status}
+              className={`status-opt role-${statusRole(s.status)}${
+                s.status === task.status ? " current" : ""
+              }`}
+              onClick={() => pickStatus(s)}
+            >
+              {s.status}
+            </button>
+          ))}
+        </div>
+      )}
+      {statusError && <p className="error">{statusError}</p>}
 
       <div className="pill-row">
         {showsPriority(task.priority) && prio && (
@@ -130,6 +199,12 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
       </div>
 
       <div className="task-actions">
+        <button
+          className={`link${pinned ? " pinned" : ""}`}
+          onClick={() => onTogglePin(task.id)}
+        >
+          {pinned ? "★ no foco" : "☆ fixar"}
+        </button>
         {children.length > 0 && (
           <button className="link" onClick={() => setShowSubs((v) => !v)}>
             {showSubs ? "▾" : "▸"} {children.length} subtask{children.length > 1 ? "s" : ""}
@@ -245,6 +320,9 @@ function TaskCard({ task, getChildren, dueIds, onRemindersChanged, depth = 0 }: 
               getChildren={getChildren}
               dueIds={dueIds}
               onRemindersChanged={onRemindersChanged}
+              pinnedIds={pinnedIds}
+              onTogglePin={onTogglePin}
+              onStatusChanged={onStatusChanged}
               depth={depth + 1}
             />
           ))}

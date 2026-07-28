@@ -1,7 +1,7 @@
 mod clickup;
 mod secret;
 
-use clickup::{FolderRef, TaskDto, Team};
+use clickup::{FolderRef, StatusDef, TaskDto, Team};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Ha um token do ClickUp salvo no cofre?
@@ -69,6 +69,22 @@ async fn sync_open_tasks(folder_id: String) -> Result<Vec<TaskDto>, String> {
     clickup::fetch_open_tasks(&token, &team.id, assignee_id, &folder_id).await
 }
 
+/// Statuses de uma List (para o menu de troca de status).
+#[tauri::command]
+async fn get_list_statuses(list_id: String) -> Result<Vec<StatusDef>, String> {
+    let token = secret::read()?
+        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
+    clickup::get_list_statuses(&token, &list_id).await
+}
+
+/// Grava o status de uma task no ClickUp (ação explícita do usuário).
+#[tauri::command]
+async fn set_task_status(task_id: String, status: String) -> Result<(), String> {
+    let token = secret::read()?
+        .ok_or_else(|| "Nenhum token do ClickUp salvo.".to_string())?;
+    clickup::set_task_status(&token, &task_id, &status).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -105,7 +121,9 @@ pub fn run() {
             clear_clickup_token,
             get_teams,
             get_folder,
-            sync_open_tasks
+            sync_open_tasks,
+            get_list_statuses,
+            set_task_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -12,9 +12,13 @@ import {
   clearTasks,
   dueReminderSubjectIds,
   getCachedTasks,
+  getPinnedIds,
   lastFetchedAt,
+  pinTask,
   pruneStale,
   STALE_AFTER_MS,
+  unpinTask,
+  updateTaskStatusLocal,
   type CachedTask,
 } from "./db";
 import { groupBySprint, pickCurrentGroupIndex } from "./sprint";
@@ -78,10 +82,23 @@ function App() {
   const [filter, setFilter] = useState<FilterKind>("tudo");
   const [showDone, setShowDone] = useState(false);
 
-  // Base = tasks visíveis (concluídas escondidas por padrão).
+  // Foco (pin)
+  const [pinnedOrder, setPinnedOrder] = useState<string[]>([]);
+  const pinnedSet = useMemo(() => new Set(pinnedOrder), [pinnedOrder]);
+
+  // Foco: tasks fixadas, resolvidas de TODAS as tasks (imunes ao filtro/sprint).
+  const focoTasks = useMemo(
+    () => pinnedOrder.map((id) => tasks.find((t) => t.id === id)).filter((t): t is CachedTask => !!t),
+    [pinnedOrder, tasks],
+  );
+
+  // Base = tasks visíveis na sprint (concluídas escondidas por padrão, sem as fixadas).
   const baseTasks = useMemo(
-    () => (showDone ? tasks : tasks.filter((t) => !isDone(t.status_type))),
-    [tasks, showDone],
+    () =>
+      tasks.filter(
+        (t) => (showDone || !isDone(t.status_type)) && !pinnedSet.has(t.id),
+      ),
+    [tasks, showDone, pinnedSet],
   );
 
   const groups = useMemo(() => groupBySprint(baseTasks), [baseTasks]);
@@ -121,12 +138,18 @@ function App() {
       .then((f) => alive && setFolder(f))
       .catch(() => alive && setFolder(null));
 
-    Promise.all([getCachedTasks(), lastFetchedAt(), dueReminderSubjectIds(Date.now())])
-      .then(([rows, last, due]) => {
+    Promise.all([
+      getCachedTasks(),
+      lastFetchedAt(),
+      dueReminderSubjectIds(Date.now()),
+      getPinnedIds(),
+    ])
+      .then(([rows, last, due, pinned]) => {
         if (!alive) return;
         setTasks(rows);
         setLastSync(last);
         setDueIds(due);
+        setPinnedOrder(pinned);
       })
       .catch(() => {});
 
@@ -139,6 +162,20 @@ function App() {
     setTasks(await getCachedTasks());
     setLastSync(await lastFetchedAt());
     await reloadDue();
+  }
+
+  async function handleTogglePin(id: string) {
+    if (pinnedSet.has(id)) await unpinTask(id);
+    else await pinTask(id);
+    setPinnedOrder(await getPinnedIds());
+  }
+
+  // Otimista: atualiza estado + cache local. No rollback, é chamado com o valor antigo.
+  async function handleStatusChanged(id: string, status: string, statusType: string) {
+    setTasks((ts) =>
+      ts.map((t) => (t.id === id ? { ...t, status, status_type: statusType } : t)),
+    );
+    await updateTaskStatusLocal(id, status, statusType);
   }
 
   async function handleSync() {
@@ -292,6 +329,26 @@ function App() {
         <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
       )}
 
+      {focoTasks.length > 0 && (
+        <section className="foco">
+          <div className="eyebrow">Meu foco</div>
+          <ol className="task-list foco-list">
+            {focoTasks.map((t) => (
+              <TaskCard
+                key={t.id}
+                task={t}
+                getChildren={noChildren}
+                dueIds={dueIds}
+                onRemindersChanged={reloadDue}
+                pinnedIds={pinnedSet}
+                onTogglePin={handleTogglePin}
+                onStatusChanged={handleStatusChanged}
+              />
+            ))}
+          </ol>
+        </section>
+      )}
+
       {current && (
         <>
           <nav className="sprint-nav">
@@ -353,6 +410,9 @@ function App() {
                   getChildren={getChildren}
                   dueIds={dueIds}
                   onRemindersChanged={reloadDue}
+                  pinnedIds={pinnedSet}
+                  onTogglePin={handleTogglePin}
+                  onStatusChanged={handleStatusChanged}
                 />
               ))}
             </ul>
@@ -365,6 +425,9 @@ function App() {
                   getChildren={noChildren}
                   dueIds={dueIds}
                   onRemindersChanged={reloadDue}
+                  pinnedIds={pinnedSet}
+                  onTogglePin={handleTogglePin}
+                  onStatusChanged={handleStatusChanged}
                 />
               ))}
               {filtered.length === 0 && (

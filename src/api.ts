@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SyncedTask } from "./db";
+import {
+  cacheListStatuses,
+  getCachedListStatuses,
+  type StatusDef,
+  type SyncedTask,
+} from "./db";
 
 /** Workspace do ClickUp (a API chama de "team"). */
 export interface Team {
@@ -36,3 +41,16 @@ export const getFolder = (folderId: string) =>
 /** Sync paginado das tasks abertas do usuário dentro do folder (lado Rust). */
 export const syncOpenTasks = (folderId: string) =>
   invoke<SyncedTask[]>("sync_open_tasks", { folderId });
+
+/** Grava o status da task no ClickUp (ação explícita). */
+export const setTaskStatus = (taskId: string, status: string) =>
+  invoke<void>("set_task_status", { taskId, status });
+
+/** Statuses da list, servidos do cache local (TTL 1h) ou buscados no ClickUp. */
+export async function loadListStatuses(listId: string): Promise<StatusDef[]> {
+  const cached = await getCachedListStatuses(listId);
+  if (cached) return cached;
+  const fresh = await invoke<StatusDef[]>("get_list_statuses", { listId });
+  await cacheListStatuses(listId, fresh);
+  return fresh;
+}

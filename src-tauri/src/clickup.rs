@@ -291,6 +291,85 @@ async fn get_task_page(
     unreachable!("loop de retry sempre retorna")
 }
 
+/// Um status possível de uma List (§1.3). `type` ∈ open | custom | closed | done.
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusDef {
+    pub status: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub orderindex: i64,
+    pub color: Option<String>,
+}
+
+/// `GET /api/v2/list/{list_id}` — statuses da list, para resolver "marcar feito"
+/// e trocar status sem hardcodar strings (§1.3).
+pub async fn get_list_statuses(token: &str, list_id: &str) -> Result<Vec<StatusDef>, String> {
+    let resp = reqwest::Client::new()
+        .get(format!("{API_BASE}/list/{list_id}"))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao ler a list: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Nao foi possivel ler os statuses da list {list_id} (HTTP {}).",
+            resp.status()
+        ));
+    }
+
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada ao ler a list: {e}"))?;
+
+    let order = |x: &serde_json::Value| -> i64 {
+        x.as_i64()
+            .or_else(|| x.as_f64().map(|f| f as i64))
+            .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
+            .unwrap_or(0)
+    };
+
+    Ok(v["statuses"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| {
+                    Some(StatusDef {
+                        status: s["status"].as_str()?.to_string(),
+                        kind: s["type"].as_str().unwrap_or("custom").to_string(),
+                        orderindex: order(&s["orderindex"]),
+                        color: s["color"].as_str().map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// `PUT /api/v2/task/{task_id}` — grava o status. Envia a string exatamente
+/// como veio da API (acento e caixa preservados). Escrita só por ação explícita.
+pub async fn set_task_status(token: &str, task_id: &str, status: &str) -> Result<(), String> {
+    let resp = reqwest::Client::new()
+        .put(format!("{API_BASE}/task/{task_id}"))
+        .header("Authorization", token)
+        .json(&serde_json::json!({ "status": status }))
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao gravar o status: {e}"))?;
+
+    if resp.status().is_success() {
+        return Ok(());
+    }
+
+    let code = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    Err(match code.as_u16() {
+        401 => "Token do ClickUp invalido ou sem permissao (HTTP 401).".to_string(),
+        _ => format!("ClickUp recusou a mudanca de status (HTTP {code}): {body}"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::TeamsResponse;
