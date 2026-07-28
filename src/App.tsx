@@ -402,9 +402,19 @@ function App() {
                 onTogglePin={handleTogglePin}
                 onStatusChanged={handleStatusChanged}
                 draggable
-                onDragStart={() => setDragId(t.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDropOn(t.id)}
+                onDragStart={(e) => {
+                  setDragId(t.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", t.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOn(t.id);
+                }}
               />
             ))}
           </ol>
