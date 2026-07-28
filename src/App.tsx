@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Reorder, useDragControls } from "framer-motion";
 import {
   anthropicStatus,
   clearToken,
@@ -120,25 +121,10 @@ function App() {
   // Foco (pin) + reordenação por arraste
   const [pinnedOrder, setPinnedOrder] = useState<string[]>([]);
   const pinnedSet = useMemo(() => new Set(pinnedOrder), [pinnedOrder]);
-  const [dragId, setDragId] = useState<string | null>(null);
-
-  async function handleDropOn(targetId: string) {
-    if (!dragId || dragId === targetId) {
-      setDragId(null);
-      return;
-    }
-    const order = [...pinnedOrder];
-    const from = order.indexOf(dragId);
-    const to = order.indexOf(targetId);
-    if (from < 0 || to < 0) {
-      setDragId(null);
-      return;
-    }
-    order.splice(from, 1);
-    order.splice(to, 0, dragId);
-    setPinnedOrder(order);
-    setDragId(null);
-    await setFocusOrder(order);
+  // Reorder do framer-motion devolve a nova ordem dos values (ids).
+  async function handleReorder(newOrder: string[]) {
+    setPinnedOrder(newOrder);
+    await setFocusOrder(newOrder);
   }
 
   // Foco: tasks fixadas, resolvidas de TODAS as tasks (imunes ao filtro/sprint).
@@ -390,34 +376,27 @@ function App() {
       {focoTasks.length > 0 && (
         <section className="foco">
           <div className="eyebrow">Meu foco</div>
-          <ol className="task-list foco-list">
+          <Reorder.Group
+            as="div"
+            axis="y"
+            values={pinnedOrder}
+            onReorder={handleReorder}
+            className="task-list foco-list"
+          >
             {focoTasks.map((t) => (
-              <TaskCard
-                key={t.id}
-                task={t}
-                getChildren={noChildren}
-                dueIds={dueIds}
-                onRemindersChanged={reloadDue}
-                pinnedIds={pinnedSet}
-                onTogglePin={handleTogglePin}
-                onStatusChanged={handleStatusChanged}
-                draggable
-                onDragStart={(e) => {
-                  setDragId(t.id);
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", t.id);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleDropOn(t.id);
-                }}
-              />
+              <FocoItem key={t.id} id={t.id}>
+                <TaskCard
+                  task={t}
+                  getChildren={noChildren}
+                  dueIds={dueIds}
+                  onRemindersChanged={reloadDue}
+                  pinnedIds={pinnedSet}
+                  onTogglePin={handleTogglePin}
+                  onStatusChanged={handleStatusChanged}
+                />
+              </FocoItem>
             ))}
-          </ol>
+          </Reorder.Group>
         </section>
       )}
 
@@ -474,7 +453,7 @@ function App() {
           </div>
 
           {filter === "tudo" ? (
-            <ul className="task-list">
+            <div className="task-list">
               {tree.roots.map((t) => (
                 <TaskCard
                   key={t.id}
@@ -487,9 +466,9 @@ function App() {
                   onStatusChanged={handleStatusChanged}
                 />
               ))}
-            </ul>
+            </div>
           ) : (
-            <ul className="task-list">
+            <div className="task-list">
               {filtered.map((t) => (
                 <TaskCard
                   key={t.id}
@@ -503,9 +482,9 @@ function App() {
                 />
               ))}
               {filtered.length === 0 && (
-                <li className="muted">Nada em “{filter}” nesta sprint.</li>
+                <div className="muted">Nada em “{filter}” nesta sprint.</div>
               )}
-            </ul>
+            </div>
           )}
         </>
       )}
@@ -560,6 +539,31 @@ function App() {
         )}
       </footer>
     </main>
+  );
+}
+
+/** Item arrastável do "Meu foco" — alça dedicada + animação de mola. */
+function FocoItem({ id, children }: { id: string; children: React.ReactNode }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={id}
+      as="div"
+      className="foco-item"
+      dragListener={false}
+      dragControls={controls}
+      whileDrag={{ scale: 1.015, zIndex: 5 }}
+      transition={{ type: "spring", stiffness: 500, damping: 40 }}
+    >
+      <button
+        className="drag-grip"
+        aria-label="arrastar para reordenar"
+        onPointerDown={(e) => controls.start(e)}
+      >
+        ⠿
+      </button>
+      <div className="foco-item-body">{children}</div>
+    </Reorder.Item>
   );
 }
 

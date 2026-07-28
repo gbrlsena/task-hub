@@ -32,11 +32,6 @@ interface Props {
   onTogglePin: (id: string) => void;
   onStatusChanged: (id: string, status: string, statusType: string) => void;
   depth?: number;
-  /** Reordenação por arraste (só na seção "Meu foco"). */
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
 }
 
 function fmtDayMonth(ms: number): string {
@@ -59,10 +54,6 @@ function TaskCard({
   onTogglePin,
   onStatusChanged,
   depth = 0,
-  draggable,
-  onDragStart,
-  onDragOver,
-  onDrop,
 }: Props) {
   const pinned = pinnedIds.has(task.id);
   const [showSubs, setShowSubs] = useState(false);
@@ -225,14 +216,7 @@ function TaskCard({
   ].sort((a, b) => b.at - a.at);
 
   return (
-    <li
-      className={`task-card${draggable ? " draggable" : ""}`}
-      style={{ marginLeft: depth ? 16 : 0 }}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
+    <div className="task-card" style={{ marginLeft: depth ? 16 : 0 }}>
       <div className="task-main">
         <span className="task-name">{task.name}</span>
         <button
@@ -439,7 +423,7 @@ function TaskCard({
       )}
 
       {showSubs && children.length > 0 && (
-        <ul className="task-list subtask-list">
+        <div className="task-list subtask-list">
           {children.map((child) => (
             <TaskCard
               key={child.id}
@@ -453,9 +437,9 @@ function TaskCard({
               depth={depth + 1}
             />
           ))}
-        </ul>
+        </div>
       )}
-    </li>
+    </div>
   );
 }
 
