@@ -33,13 +33,6 @@ type Screen = { kind: "loading" } | { kind: "token" } | { kind: "board" };
 const DEFAULT_FOLDER_ID = "90118026854";
 const FOLDER_KEY = "taskhub.folderId";
 
-const CHIPS: { filter: FilterKind; label: string }[] = [
-  { filter: "tudo", label: "tudo" },
-  { filter: "atrasadas", label: "atrasadas" },
-  { filter: "travadas", label: "travadas" },
-  { filter: "esquecidas", label: "esquecidas" },
-];
-
 function loadFolderId(): string {
   return localStorage.getItem(FOLDER_KEY) ?? DEFAULT_FOLDER_ID;
 }
@@ -85,8 +78,6 @@ function App() {
   const [filter, setFilter] = useState<FilterKind>("tudo");
   const [showDone, setShowDone] = useState(false);
 
-  const metrics = useMemo(() => computeMetrics(tasks), [tasks]);
-
   // Base = tasks visíveis (concluídas escondidas por padrão).
   const baseTasks = useMemo(
     () => (showDone ? tasks : tasks.filter((t) => !isDone(t.status_type))),
@@ -103,17 +94,14 @@ function App() {
 
   const current = currentIndex >= 0 ? groups[currentIndex] : null;
 
-  const tree = useMemo(
-    () => buildTaskTree(current ? current.tasks : []),
-    [current],
+  // Métricas e filtro são SEMPRE da sprint selecionada.
+  const metrics = useMemo(() => computeMetrics(current ? current.tasks : []), [current]);
+  const tree = useMemo(() => buildTaskTree(current ? current.tasks : []), [current]);
+  const filtered = useMemo(
+    () => (current ? current.tasks : []).filter((t) => matchesFilter(t, filter)),
+    [current, filter],
   );
   const getChildren = (id: string) => tree.childrenByParent.get(id) ?? [];
-
-  // Filtro por atributo: lista plana através de todas as sprints.
-  const filtered = useMemo(
-    () => baseTasks.filter((t) => matchesFilter(t, filter)),
-    [baseTasks, filter],
-  );
 
   async function reloadDue() {
     setDueIds(await dueReminderSubjectIds(Date.now()));
@@ -300,47 +288,11 @@ function App() {
         </button>
       </section>
 
-      {tasks.length > 0 && (
-        <>
-          <section className="metrics">
-            {metricTiles.map((m) => (
-              <button
-                key={m.label}
-                className={`metric${filter === m.filter ? " active" : ""}`}
-                onClick={() => setFilter(m.filter)}
-              >
-                <span className={`metric-value ${m.role}`}>{m.value}</span>
-                <span className="metric-label muted">{m.label}</span>
-              </button>
-            ))}
-          </section>
-
-          <section className="chips">
-            {CHIPS.map((c) => (
-              <button
-                key={c.filter}
-                className={`filter-chip${filter === c.filter ? " active" : ""}`}
-                onClick={() => setFilter(c.filter)}
-              >
-                {c.label}
-              </button>
-            ))}
-            <button
-              className={`filter-chip toggle${showDone ? " active" : ""}`}
-              onClick={() => setShowDone((v) => !v)}
-            >
-              {showDone ? "✓ concluídas" : "concluídas"}
-            </button>
-          </section>
-        </>
-      )}
-
       {tasks.length === 0 && !syncing && (
         <p className="muted">Nenhuma task em cache. Clique em “Sincronizar”.</p>
       )}
 
-      {/* Filtro "tudo": navegação por sprint com árvore de subtasks. */}
-      {filter === "tudo" && current && (
+      {current && (
         <>
           <nav className="sprint-nav">
             <button
@@ -359,7 +311,7 @@ function App() {
                 </span>
               )}
               <span className="muted">
-                {current.tasks.length} tasks · {currentIndex + 1}/{groups.length}
+                {currentIndex + 1}/{groups.length}
               </span>
             </div>
             <button
@@ -372,38 +324,54 @@ function App() {
             </button>
           </nav>
 
-          <ul className="task-list">
-            {tree.roots.map((t) => (
-              <TaskCard
-                key={t.id}
-                task={t}
-                getChildren={getChildren}
-                dueIds={dueIds}
-                onRemindersChanged={reloadDue}
-              />
+          {/* Métricas da sprint = o filtro. Um controle só. */}
+          <section className="metrics">
+            {metricTiles.map((m) => (
+              <button
+                key={m.label}
+                className={`metric${filter === m.filter ? " active" : ""}`}
+                onClick={() => setFilter(m.filter)}
+              >
+                <span className={`metric-value ${m.role}`}>{m.value}</span>
+                <span className="metric-label muted">{m.label}</span>
+              </button>
             ))}
-          </ul>
-        </>
-      )}
+          </section>
 
-      {/* Filtro por atributo: lista plana através de todas as sprints. */}
-      {filter !== "tudo" && (
-        <>
-          <div className="filter-head muted">
-            {filtered.length} {filter}
+          <div className="metrics-aux">
+            <button className="link" onClick={() => setShowDone((v) => !v)}>
+              {showDone ? "ocultar concluídas" : "mostrar concluídas"}
+            </button>
           </div>
-          <ul className="task-list">
-            {filtered.map((t) => (
-              <TaskCard
-                key={t.id}
-                task={t}
-                getChildren={noChildren}
-                dueIds={dueIds}
-                onRemindersChanged={reloadDue}
-              />
-            ))}
-            {filtered.length === 0 && <li className="muted">Nada aqui. 🎉</li>}
-          </ul>
+
+          {filter === "tudo" ? (
+            <ul className="task-list">
+              {tree.roots.map((t) => (
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  getChildren={getChildren}
+                  dueIds={dueIds}
+                  onRemindersChanged={reloadDue}
+                />
+              ))}
+            </ul>
+          ) : (
+            <ul className="task-list">
+              {filtered.map((t) => (
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  getChildren={noChildren}
+                  dueIds={dueIds}
+                  onRemindersChanged={reloadDue}
+                />
+              ))}
+              {filtered.length === 0 && (
+                <li className="muted">Nada em “{filter}” nesta sprint.</li>
+              )}
+            </ul>
+          )}
         </>
       )}
 

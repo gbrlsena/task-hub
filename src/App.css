@@ -295,36 +295,11 @@ button.link {
   font-size: 11px;
 }
 
-/* Chips de filtro */
-.chips {
+.metrics-aux {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.filter-chip {
+  justify-content: flex-end;
   font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: none;
-  border: 1px solid #33333a;
-  color: #cfcfe0;
-  font-weight: 400;
-}
-
-.filter-chip.active {
-  background: #6c7bff;
-  border-color: #6c7bff;
-  color: white;
-}
-
-.filter-chip.toggle {
-  margin-left: auto;
-}
-
-.filter-head {
-  font-size: 12px;
-  padding: 2px;
+  margin-top: -4px;
 }
 
 /* Navegação de sprint */
