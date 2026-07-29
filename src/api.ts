@@ -78,3 +78,12 @@ export const clearGithubToken = () => invoke<void>("clear_github_token");
 /** Pergunta em linguagem natural sobre uma task (roda o loop de tools no Rust). */
 export const askTask = (taskId: string, question: string) =>
   invoke<AskResult>("ask_task", { taskId, question });
+
+// --- Janela destacada -----------------------------------------------------
+
+/** Abre a janela da task; se já estiver aberta, traz pra frente. */
+export const openTaskWindow = (taskId: string, title: string) =>
+  invoke<void>("open_task_window", { taskId, title });
+
+/** Ids das tasks que estão com janela destacada aberta agora. */
+export const detachedTaskIds = () => invoke<string[]>("detached_task_ids");

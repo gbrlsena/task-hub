@@ -3,6 +3,7 @@ import { Reorder, useDragControls } from "framer-motion";
 import {
   anthropicStatus,
   clearToken,
+  detachedTaskIds,
   getFolder,
   githubStatus,
   saveAnthropicKey,
@@ -28,6 +29,7 @@ import {
   type CachedTask,
 } from "./db";
 import { groupBySprint, pickCurrentGroupIndex } from "./sprint";
+import { onChanged, onDetached } from "./sync";
 import {
   buildTaskTree,
   computeMetrics,
@@ -82,6 +84,7 @@ function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dueIds, setDueIds] = useState<Set<string>>(new Set());
+  const [detachedIds, setDetachedIds] = useState<Set<string>>(new Set());
 
   // Fase 2: conexões (Anthropic + GitHub)
   const [connOpen, setConnOpen] = useState(false);
@@ -205,8 +208,28 @@ function App() {
   async function reloadCache() {
     setTasks(await getCachedTasks());
     setLastSync(await lastFetchedAt());
+    setPinnedOrder(await getPinnedIds());
     await reloadDue();
   }
+
+  // Janelas destacadas + ping de escrita das outras janelas.
+  useEffect(() => {
+    detachedTaskIds()
+      .then((ids) => setDetachedIds(new Set(ids)))
+      .catch(() => {});
+
+    const offs = [
+      onDetached((ids) => setDetachedIds(new Set(ids))),
+      onChanged(() => {
+        reloadCache().catch(() => {});
+      }),
+    ];
+
+    return () => {
+      for (const off of offs) off.then((f) => f()).catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleTogglePin(id: string) {
     if (pinnedSet.has(id)) await unpinTask(id);
@@ -391,6 +414,7 @@ function App() {
                   dueIds={dueIds}
                   onRemindersChanged={reloadDue}
                   pinnedIds={pinnedSet}
+                  detachedIds={detachedIds}
                   onTogglePin={handleTogglePin}
                   onStatusChanged={handleStatusChanged}
                 />
@@ -462,6 +486,7 @@ function App() {
                   dueIds={dueIds}
                   onRemindersChanged={reloadDue}
                   pinnedIds={pinnedSet}
+                  detachedIds={detachedIds}
                   onTogglePin={handleTogglePin}
                   onStatusChanged={handleStatusChanged}
                 />
@@ -477,6 +502,7 @@ function App() {
                   dueIds={dueIds}
                   onRemindersChanged={reloadDue}
                   pinnedIds={pinnedSet}
+                  detachedIds={detachedIds}
                   onTogglePin={handleTogglePin}
                   onStatusChanged={handleStatusChanged}
                 />

@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { askTask, loadListStatuses, setTaskStatus, type AskResult } from "./api";
+import {
+  askTask,
+  loadListStatuses,
+  openTaskWindow,
+  setTaskStatus,
+  type AskResult,
+} from "./api";
 import {
   addComment,
   addReminder,
@@ -30,6 +36,8 @@ interface Props {
   dueIds: Set<string>;
   onRemindersChanged: () => void;
   pinnedIds: Set<string>;
+  /** Tasks com janela destacada aberta: o cartão delas encolhe. */
+  detachedIds: Set<string>;
   onTogglePin: (id: string) => void;
   onStatusChanged: (id: string, status: string, statusType: string) => void;
   /** A janela destacada renderiza o cartão sozinho: gaveta já aberta. */
@@ -54,6 +62,7 @@ function TaskCard({
   dueIds,
   onRemindersChanged,
   pinnedIds,
+  detachedIds,
   onTogglePin,
   onStatusChanged,
   standalone = false,
@@ -165,6 +174,15 @@ function TaskCard({
     }
   }
 
+  // Abre a janela destacada — ou traz pra frente a que já está aberta.
+  async function detach() {
+    try {
+      await openTaskWindow(task.id, `${task.custom_id ?? task.id} · ${task.name}`);
+    } catch (e) {
+      setStatusError(String(e));
+    }
+  }
+
   const children = getChildren(task.id);
   const late = isLate(task.due_date);
   const prio = priorityLabel(task.priority);
@@ -221,6 +239,18 @@ function TaskCard({
     ...(comments ?? []).map((c) => ({ at: c.created_at, kind: "comment" as const, c })),
     ...(reminders ?? []).map((r) => ({ at: r.created_at, kind: "reminder" as const, r })),
   ].sort((a, b) => b.at - a.at);
+
+  // Destacada: o cartão vira o vazio que a nota deixou. Clicar traz a janela.
+  if (detachedIds.has(task.id) && !standalone) {
+    return (
+      <div className="task-card task-ghost" style={{ marginLeft: depth ? 16 : 0 }}>
+        <button className="ghost-name" onClick={detach} title="Trazer a janela pra frente">
+          {task.name}
+        </button>
+        <span className="eyebrow">destacado</span>
+      </div>
+    );
+  }
 
   return (
     <div className="task-card" style={{ marginLeft: depth ? 16 : 0 }}>
@@ -283,6 +313,11 @@ function TaskCard({
         <div className="desc-panel" id={descId}>
           <div className="desc-head">
             <span className="eyebrow">descrição</span>
+            {!standalone && (
+              <button className="link desc-detach" onClick={detach}>
+                destacar
+              </button>
+            )}
           </div>
           <div className="desc-body">{cleanDescription(task.description)}</div>
         </div>
@@ -460,6 +495,7 @@ function TaskCard({
               dueIds={dueIds}
               onRemindersChanged={onRemindersChanged}
               pinnedIds={pinnedIds}
+              detachedIds={detachedIds}
               onTogglePin={onTogglePin}
               onStatusChanged={onStatusChanged}
               depth={depth + 1}
