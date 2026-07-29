@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CachedTask } from "./db";
 import {
   buildTaskTree,
+  cleanDescription,
   computeMetrics,
   isDone,
   isLate,
@@ -151,5 +152,27 @@ describe("buildTaskTree", () => {
     expect(roots.map((r) => r.id).sort()).toEqual(["orfa", "p"]);
     expect(childrenByParent.get("p")?.map((c) => c.id)).toEqual(["c1", "c2"]);
     expect(childrenByParent.has("sumiu")).toBe(false);
+  });
+});
+
+describe("cleanDescription", () => {
+  it("tira espaço em branco das pontas", () => {
+    expect(cleanDescription("  Contexto  \n")).toBe("Contexto");
+  });
+
+  it("preserva parágrafo (uma linha em branco)", () => {
+    expect(cleanDescription("Contexto\n\nPasso a passo")).toBe("Contexto\n\nPasso a passo");
+  });
+
+  it("colapsa buracos de 3+ linhas em um parágrafo", () => {
+    expect(cleanDescription("Contexto\n\n\n\nPasso")).toBe("Contexto\n\nPasso");
+  });
+
+  it("normaliza quebra do Windows", () => {
+    expect(cleanDescription("a\r\nb")).toBe("a\nb");
+  });
+
+  it("string vazia continua vazia", () => {
+    expect(cleanDescription("   ")).toBe("");
   });
 });
