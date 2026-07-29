@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
   dueReminderSubjectIds,
   getCachedTasks,
@@ -8,6 +8,7 @@ import {
   updateTaskStatusLocal,
   type CachedTask,
 } from "./db";
+import { fitWindowToContent } from "./sticker";
 import { onChanged } from "./sync";
 import { buildTaskTree } from "./task";
 import TaskCard from "./TaskCard";
@@ -40,6 +41,10 @@ function TaskWindow({ taskId }: { taskId: string }) {
     reload().catch(() => setTasks([]));
   }, [reload]);
 
+  // A janela cola no tamanho do cartão, e continua colando quando um painel
+  // abre ou fecha. Layout effect: mede depois do DOM, antes do paint.
+  useLayoutEffect(() => fitWindowToContent(), []);
+
   // Outra janela escreveu no banco: relê.
   useEffect(() => {
     const un = onChanged(() => {
@@ -66,7 +71,7 @@ function TaskWindow({ taskId }: { taskId: string }) {
 
   if (tasks === null) {
     return (
-      <div className="app">
+      <div className="app sticker">
         <p className="muted">carregando…</p>
       </div>
     );
@@ -75,7 +80,7 @@ function TaskWindow({ taskId }: { taskId: string }) {
   const task = tasks.find((t) => t.id === taskId);
   if (!task) {
     return (
-      <div className="app">
+      <div className="app sticker">
         <p className="muted">
           Essa task não está mais no cache local. Sincronize na janela principal.
         </p>
@@ -86,7 +91,7 @@ function TaskWindow({ taskId }: { taskId: string }) {
   const tree = buildTaskTree(tasks);
 
   return (
-    <div className="app">
+    <div className="app sticker">
       <TaskCard
         task={task}
         getChildren={(id) => tree.childrenByParent.get(id) ?? []}

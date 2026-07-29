@@ -5,6 +5,7 @@
   "windows": ["main", "task-*"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-size",
     "opener:default",
     "sql:default",
     "sql:allow-execute"

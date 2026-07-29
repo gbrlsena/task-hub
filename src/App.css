@@ -556,6 +556,19 @@ button.task-name:hover {
   white-space: nowrap;
 }
 
+/* Janela destacada em modo sticker: a moldura cola no cartão.
+   `min-height: 100vh` do .app faria o corpo nunca encolher, e um teto em
+   `vh` na gaveta viraria laço (janela mede conteúdo, conteúdo mede janela) —
+   daí o px fixo aqui. */
+.app.sticker {
+  min-height: 0;
+  padding: 14px;
+}
+
+.app.sticker .desc-body {
+  max-height: 460px;
+}
+
 /* Task destacada: sem relevo, é o buraco que a nota deixou */
 .task-ghost {
   flex-direction: row;
