@@ -24,6 +24,7 @@ function task(partial: Partial<CachedTask> & { id: string }): CachedTask {
     list_name: "Backlog",
     due_date: null,
     parent: null,
+    description: "",
     ...partial,
   };
 }
