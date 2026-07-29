@@ -26,15 +26,22 @@ requisitos, contratos de API e critérios de aceite.
 ## Stack e onde as coisas moram
 
 - **Rust** (`src-tauri/src/`): dono de todo HTTP (`reqwest`), keyring
-  (`secret.rs`), e das migrações SQL. `clickup.rs` (API ClickUp), `github.rs`
-  (busca de PRs), `ai.rs` (loop de tool-use com a Anthropic).
+  (`secret.rs`), das migrações SQL e das janelas. `clickup.rs` (API ClickUp),
+  `github.rs` (busca de PRs), `ai.rs` (loop de tool-use com a Anthropic),
+  `detach.rs` (janela destacada: label, inventário das abertas, criar/focar).
 - **Frontend** (`src/`): React + TS + Vite. `db.ts` fala com o SQLite
   (`@tauri-apps/plugin-sql`), `api.ts` invoca os commands Tauri, `sprint.ts`/
   `task.ts` têm a lógica pura (parser de sprint, derivações como `isLate`/
-  `isStale`/`isDone`), testada com vitest.
+  `isStale`/`isDone`), testada com vitest. `TaskWindow.tsx` é a tela da janela
+  destacada, `sync.ts` o ping entre janelas, `sticker.ts` o ajuste de altura,
+  `route.ts` a leitura do `?task=`.
 - SQLite local via `tauri-plugin-sql`; migrações em `src-tauri/migrations/`,
   numeradas e cumulativas — nunca editar uma migração já commitada, sempre
-  adicionar uma nova.
+  adicionar uma nova. Editar uma já aplicada quebra o app: ver as armadilhas
+  na seção de dev vs. release.
+- **Capabilities**: `src-tauri/capabilities/default.json` lista
+  `["main", "task-*"]`. Janela cujo label não casa com esses padrões nasce sem
+  permissão nenhuma e o `plugin-sql` dela falha calado.
 
 ## Design system
 
@@ -114,6 +121,32 @@ iterar em opções visuais primeiro.
   `.msi` e um instalador NSIS em `target/release/bundle/`). O usuário fixa
   esse `.exe` na barra de tarefas — cada rebuild **substitui o arquivo no
   mesmo caminho**, então o atalho fixado continua funcionando sem refixar.
+- **Fechar o app antes de compilar**: o Windows tranca o `.exe` em execução e
+  o build morre com `failed to remove file … Acesso negado (os error 5)`.
+
+### Migrações: duas armadilhas que já quebraram o app
+
+Dev e release compartilham o mesmo banco (`%APPDATA%\com.gbrlsena.task-hub\
+taskhub.db`), e o sqlx valida as migrações aplicadas na abertura. Duas
+consequências que **não são hipotéticas** — as duas aconteceram na `0.2.0`:
+
+- **Rodar o `tauri dev` com uma migração nova invalida o release instalado**
+  até a próxima recompilação. O binário velho vê um schema mais novo do que
+  conhece e se recusa a abrir: *migration N was previously applied but is
+  missing in the resolved migrations*. Não é corrupção, é proteção — o
+  conserto é recompilar, nunca apagar o banco (as anotações e lembretes são
+  locais e não existem no ClickUp).
+- **Nunca deixar o conteúdo de um `.sql` já aplicado mudar um único byte.** O
+  sqlx guarda um sha384 do arquivo; qualquer diferença vira *migration N was
+  previously applied but has been modified*. No Windows isso acontece **sem
+  ninguém editar nada**: com `core.autocrlf=true`, um `git checkout` reescreve
+  em CRLF o arquivo que mudou naquele intervalo. Foi assim que a `0004`
+  quebrou depois do merge. O `.gitattributes` fixa `*.sql text eol=lf` — não
+  remover. Pra diagnosticar, comparar o checksum guardado com o do arquivo:
+
+```bash
+python -c "import sqlite3,hashlib,io,os; db=os.path.join(os.environ['APPDATA'],'com.gbrlsena.task-hub','taskhub.db'); print(sqlite3.connect(f'file:{db}?mode=ro',uri=True).execute('SELECT version,hex(checksum) FROM _sqlx_migrations').fetchall()); print(hashlib.sha384(io.open('src-tauri/migrations/0004_description.sql','rb').read()).hexdigest())"
+```
 
 ## Toolchain (Windows, ambiente de dev atual)
 
@@ -122,6 +155,10 @@ iterar em opções visuais primeiro.
 - **PowerShell bloqueia `npm` por padrão** (ExecutionPolicy Restricted barra
   o shim `npm.ps1`). Usar `npm.cmd` em vez de `npm` em qualquer comando
   PowerShell, ou rodar em Bash/Git Bash/cmd onde `npm` funciona direto.
+- **`cargo` não está no PATH** dos shells que o Claude Code abre nesta máquina
+  (nem Bash nem PowerShell) — chamar `~/.cargo/bin/cargo.exe` direto, ou
+  prefixar `PATH="$HOME/.cargo/bin:$PATH"` no comando. No terminal do usuário
+  funciona normal; é só nos shells da ferramenta.
 - Linux Mint é o alvo primário de produção (spec) — nesse ambiente, `npm`
   funciona normal; prerequisito é `build-essential` + `libssl-dev`.
 - A pasta local do repo ainda se chama `notas-hub` (nome antigo, só
@@ -130,11 +167,16 @@ iterar em opções visuais primeiro.
 
 ## Testes
 
-- Rust: `cd src-tauri && cargo test` — valida token, parsing de task/`/team`,
-  status_type.
-- Frontend: `npm test` (vitest) — parser de sprint, agrupamento por sprint,
-  derivações (`isDone`/`isStale`/`isLate`/`computeMetrics`), helpers de
-  lembrete/tempo relativo.
+- Rust: `cd src-tauri && cargo test` (14 testes) — valida token, parsing de
+  task/`/team`, status_type, extração da descrição (com fallback pro
+  `text_content`) e o label da janela destacada.
+- Frontend: `npm test` (vitest, 37 testes) — parser de sprint, agrupamento por
+  sprint, derivações (`isDone`/`isStale`/`isLate`/`computeMetrics`), helpers de
+  lembrete/tempo relativo, `cleanDescription`, `parseTaskParam` e
+  `stickerHeight`.
+- O que **não** tem teste automatizado: escrita no SQLite (não há harness pro
+  plugin), componentes React e o comportamento entre janelas. Isso se verifica
+  no `tauri dev`, na mão.
 - Rodar os dois antes de considerar uma mudança pronta. Build (`npm run
   build`) também deve passar limpo (typecheck + vite build).
 
@@ -155,6 +197,24 @@ iterar em opções visuais primeiro.
   `github_search_prs`, contrato JSON com evidência/confiança, aplicação só
   por confirmação explícita. **Cada chamada custa na API da Anthropic.**
 - Reskin de UI na pegada hallmark (tema claro, tokens OKLCH, fontes offline).
+- Descrição da task (migração `0004`): já vinha no payload do sync e era
+  descartada dentro de `raw`, agora é coluna própria. Clicar no **nome** abre
+  a gaveta (`.desc-panel`); nome sem descrição não vira botão. Texto puro com
+  `pre-wrap` — o endpoint não devolve markdown, não existe parser e não deve
+  existir.
+- Janela destacada: `open_task_window` (Rust, `src-tauri/src/detach.rs`) abre
+  `index.html?task=<id>` com label `task-<id>`, renderizando o **mesmo**
+  `TaskCard` (`TaskWindow.tsx`), não um componente de detalhe paralelo. Se a
+  janela já existe, foca em vez de abrir outra. A altura cola no conteúdo
+  (`sticker.ts`, `ResizeObserver`); a largura é do usuário.
+- Estado "destacado": o cartão no hub encolhe pra nome + rótulo enquanto a
+  janela existe. **Não é persistido** — deriva de `app.webview_windows()`, então
+  crash não deixa fantasma preso na lista.
+- Sincronia entre janelas por ping (`taskhub:changed` em `sync.ts`), sem
+  payload: o SQLite é a fonte da verdade, cada janela relê. O ping carrega o
+  label de quem escreveu pra janela ignorar o próprio eco. Toda escrita do
+  `db.ts` dispara — é o único lugar onde isso mora, não espalhar pelos
+  componentes.
 
 **Não feito ainda (não assumir que existe):**
 - **Fila de notas locais**: a tabela `note` existe na migração 0001, mas não
@@ -162,9 +222,14 @@ iterar em opções visuais primeiro.
   trabalho futuro, não construído.
 - **Modo escuro**: só existe o tema claro atual; os tokens já são variáveis
   CSS, então adicionar um dark seria barato, mas ainda não foi feito.
-- **Etapa F** (empacotamento final): rodamos um `tauri build` manual (exe +
-  msi + nsis), mas não há tray icon, a janela não é always-on-top nem
-  sem-decoração, e não foi testado em Linux.
+- **Etapa F** (empacotamento final): rodamos `tauri build` manual (exe + msi +
+  nsis, hoje na `0.2.0`), mas não há tray icon, as janelas não são
+  always-on-top nem sem-decoração, e não foi testado em Linux. A janela
+  destacada seria o candidato natural a virar sticker sem decoração — implica
+  desenhar botão de fechar e área de arraste próprios.
+- **Largura da janela destacada** não acompanha o texto (só a altura cola no
+  conteúdo). Decisão consciente: largura variável deixa cada sticker com uma
+  medida diferente.
 
 ## Convenções de commit
 
