@@ -14,6 +14,7 @@ import {
   type StatusDef,
 } from "./db";
 import {
+  cleanDescription,
   isLate,
   priorityLabel,
   quickReminderAt,
@@ -31,6 +32,8 @@ interface Props {
   pinnedIds: Set<string>;
   onTogglePin: (id: string) => void;
   onStatusChanged: (id: string, status: string, statusType: string) => void;
+  /** A janela destacada renderiza o cartão sozinho: gaveta já aberta. */
+  standalone?: boolean;
   depth?: number;
 }
 
@@ -53,9 +56,13 @@ function TaskCard({
   pinnedIds,
   onTogglePin,
   onStatusChanged,
+  standalone = false,
   depth = 0,
 }: Props) {
   const pinned = pinnedIds.has(task.id);
+  const hasDesc = task.description.trim() !== "";
+  const [showDesc, setShowDesc] = useState(standalone);
+  const descId = `desc-${task.id}`;
   const [showSubs, setShowSubs] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null);
@@ -218,7 +225,19 @@ function TaskCard({
   return (
     <div className="task-card" style={{ marginLeft: depth ? 16 : 0 }}>
       <div className="task-main">
-        <span className="task-name">{task.name}</span>
+        {hasDesc ? (
+          <button
+            className="task-name"
+            onClick={() => setShowDesc((v) => !v)}
+            aria-expanded={showDesc}
+            aria-controls={descId}
+            title="Ver descrição"
+          >
+            {task.name}
+          </button>
+        ) : (
+          <span className="task-name">{task.name}</span>
+        )}
         <button
           className={`status-pill role-${statusRole(task.status)}`}
           onClick={toggleStatusMenu}
@@ -259,6 +278,15 @@ function TaskCard({
       <div className="task-meta muted">
         {task.custom_id ?? task.id} · {task.list_name}
       </div>
+
+      {showDesc && hasDesc && (
+        <div className="desc-panel" id={descId}>
+          <div className="desc-head">
+            <span className="eyebrow">descrição</span>
+          </div>
+          <div className="desc-body">{cleanDescription(task.description)}</div>
+        </div>
+      )}
 
       <div className="task-actions">
         <button
