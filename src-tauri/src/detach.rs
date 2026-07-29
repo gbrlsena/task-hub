@@ -48,8 +48,11 @@ pub async fn open(app: AppHandle, task_id: String, title: String) -> Result<(), 
     let url = format!("index.html?task={task_id}");
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(title)
-        .inner_size(460.0, 720.0)
-        .min_inner_size(380.0, 400.0)
+        // Altura provisoria: o frontend cola a janela na altura do cartao
+        // assim que mede o DOM (sticker.ts). Comeca baixa de proposito —
+        // crescer ate o conteudo incomoda menos que encolher na cara do usuario.
+        .inner_size(460.0, 280.0)
+        .min_inner_size(340.0, 160.0)
         .build()
         .map_err(|e| format!("Nao consegui abrir a janela da task: {e}"))?;
 
