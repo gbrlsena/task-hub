@@ -2,6 +2,8 @@
 
 App desktop de notas autoadesivas com integração ClickUp. Ver [`task-hub-spec.md`](task-hub-spec.md).
 
+Contribuições são bem-vindas — ver [`CONTRIBUTING.md`](CONTRIBUTING.md). Licenciado sob [MIT](LICENSE).
+
 Stack: Tauri 2 · React 18 + TypeScript + Vite · keyring nativo · `reqwest` no lado Rust.
 
 > Regra dura: nenhuma chamada HTTP sai do frontend. Todo request externo passa por
