@@ -507,6 +507,50 @@ button.link.danger {
   font-size: 12px;
 }
 
+/* Nome clicável: o sublinhado segue o texto, não a caixa do botão */
+button.task-name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted var(--accent-deep);
+  text-underline-offset: 3px;
+}
+
+button.task-name:hover {
+  background: none;
+  text-decoration-color: var(--ink);
+}
+
+/* Gaveta da descrição */
+.desc-panel {
+  margin-top: 4px;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-2);
+}
+
+.desc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.desc-body {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 .subtask-list {
   list-style: none;
   margin: 6px 0 0;
