@@ -1,0 +1,9 @@
+# Migrações são checadas por checksum (sha384 do conteúdo) pelo sqlx: se o
+# arquivo mudar um único byte depois de aplicado, o app se recusa a abrir o
+# banco com "migration N was previously applied but has been modified".
+#
+# No Windows, `core.autocrlf=true` reescreve arquivos em CRLF no checkout —
+# foi assim que a 0004 quebrou o release 0.2.0. Fixar LF mantém o byte
+# idêntico entre o build de dev que aplicou a migração e qualquer build
+# posterior, em qualquer máquina.
+*.sql text eol=lf
