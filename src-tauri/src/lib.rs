@@ -1,10 +1,12 @@
 mod ai;
 mod clickup;
+mod detach;
 mod github;
 mod secret;
 
 use ai::AskResult;
 use clickup::{FolderRef, StatusDef, TaskDto, Team};
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Lê o token do ClickUp do cofre ou erro acionável.
@@ -123,6 +125,22 @@ async fn ask_task(task_id: String, question: String) -> Result<AskResult, String
     ai::ask_task(&anthropic, &clickup, github.as_deref(), &task_id, &question).await
 }
 
+// --- Janela destacada ------------------------------------------------------
+
+#[tauri::command]
+async fn open_task_window(
+    app: tauri::AppHandle,
+    task_id: String,
+    title: String,
+) -> Result<(), String> {
+    detach::open(app, task_id, title).await
+}
+
+#[tauri::command]
+fn detached_task_ids(app: tauri::AppHandle) -> Vec<String> {
+    detach::detached_ids(&app, None)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -159,6 +177,14 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            // Fechou uma janela de task: a lista de destacadas mudou.
+            if matches!(event, tauri::WindowEvent::Destroyed)
+                && detach::task_id_from_label(window.label()).is_some()
+            {
+                detach::emit_detached(window.app_handle(), Some(window.label()));
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             token_status,
             save_clickup_token,
@@ -174,7 +200,9 @@ pub fn run() {
             github_status,
             save_github_token,
             clear_github_token,
-            ask_task
+            ask_task,
+            open_task_window,
+            detached_task_ids
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
