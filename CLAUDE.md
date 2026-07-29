@@ -39,15 +39,59 @@ requisitos, contratos de API e critérios de aceite.
 ## Design system
 
 Pegada inspirada no design skill [nutlope/hallmark](https://github.com/nutlope/hallmark)
-(anti "AI slop"): papel quente + tinta ardósia fria, tokens **OKLCH** em
-`:root` (`src/App.css`) — nunca hex solto no meio do CSS. Fontes **embutidas
-offline** via `@fontsource-variable` (Plus Jakarta Sans no corpo, JetBrains
-Mono em labels/ids) — nunca CDN, o app roda offline. Um acento (pêra) usado
-com parcimônia (~3% da tela: ação primária, borda de item ativo, links) —
-nunca como preenchimento grande. Cores de status são **tints semânticos**,
-distintos do acento da UI (in progress = ciano, blocker/atraso/urgent = coral,
-testing = âmbar, lembrete = lavanda). Números sempre com `tabular-nums`. Sem
-emoji como ícone, sem side-stripe colorida, sem preto/branco puros.
+(anti "AI slop"). O skill inteiro é pra sites de marketing (heroes, navs,
+macrostructures) e não foi vendorizado no repo — só os princípios abaixo,
+que são os que se aplicam a um app utilitário de janela estreita (380–420px).
+
+**Cor** (implementado): papel quente + tinta ardósia fria, tokens **OKLCH**
+em `:root` (`src/App.css`) — nunca hex solto no meio do CSS. Um acento (pêra)
+usado com parcimônia (~3% da tela: ação primária, borda de item ativo,
+links) — nunca como preenchimento grande. Cores de status são **tints
+semânticos**, distintos do acento da UI (in progress = ciano, blocker/atraso/
+urgent = coral, testing = âmbar, lembrete = lavanda). Sem preto/branco puros.
+
+**Tipografia** (implementado): regra "2+1" do hallmark — no máximo 3 famílias
+por página (display + corpo + um "outlier" opcional, usado em ≤2 lugares).
+Aqui: Plus Jakarta Sans faz corpo *e* display (wordmark/headings em peso
+maior), JetBrains Mono é o outlier só pra ids/labels/eyebrows — embutidas
+offline via `@fontsource-variable`, nunca CDN, o app roda offline. Números
+com `tabular-nums`; pontuação tipográfica correta (aspas curvas, `—`, `…`,
+nunca `"`/`--`/`...`). **Lacuna conhecida**: os `font-size` do `App.css` são
+valores ad hoc (10px, 12px, 16px, 20px, 23px...), não uma escala em razão
+fixa (o hallmark recomenda 1.25/1.333/1.5/1.618). Não é urgente pra hierarquia
+simples que o app tem hoje, mas se a UI crescer, migrar pra uma escala nomeada
+em vez de continuar hardcodando px.
+
+**Motion** (parcialmente implementado): tokens de easing do hallmark —
+`--ease-out: cubic-bezier(0.16,1,0.3,1)` pra elementos entrando, `--ease-in:
+cubic-bezier(0.7,0,0.84,0)` pra saindo — e durações em 3 baldes (micro
+100-150ms, curta 200-300ms, longa 300-500ms). Animar só `transform`/`opacity`
+(GPU, não engatilha layout). Nunca bounce/elastic em UI comum — a **exceção**
+explícita do hallmark é interação de arraste físico, que é exatamente o caso
+do nosso "Meu foco": a mola do `framer-motion` (`Reorder`, spring
+stiffness/damping) ali é deliberada, não um erro. **Lacunas conhecidas**: o
+`App.css` ainda não declara os tokens de easing/duração acima (transições de
+hover são instantâneas, sem token), e não há suporte a
+`@media (prefers-reduced-motion: reduce)` em lugar nenhum — vale adicionar
+quando a UI ganhar mais microinterações.
+
+**Espaçamento e camadas** (não implementado, documentando o alvo): o
+hallmark recomenda uma escala 4pt nomeada (`--space-3xs` … `--space-4xl`) em
+vez de px cru, e um z-index de 6 níveis nomeados (`--z-base`, `--z-raised`,
+`--z-dropdown`, `--z-sticky`, `--z-modal`, `--z-toast`, `--z-tooltip`) em vez
+de valores ad hoc tipo `z-index: 9999`. Hoje o `App.css` usa px direto em
+`padding`/`gap` e não tem nenhum `z-index` declarado (não há camadas
+sobrepostas ainda — status-menu e chips de lembrete são os candidatos mais
+próximos de precisar disso). Adotar a escala se/quando isso mudar.
+
+**Responsivo**: a maior parte de `responsive.md` (breakpoints 320-1920px,
+`srcset`, i18n) não se aplica — a janela é fixa/estreita, não uma página
+web. A regra que **é** relevante aqui: **texto clicável nunca quebra linha**
+(`white-space: nowrap` em botões/labels, encurtar o texto em vez de deixar
+quebrar). Já aplicado nas pills de status (`.status-pill`/`.pill`). Ficar de
+olho em rótulos dinâmicos mais longos — ex. o botão "confirmar · `<status>`"
+da Fase 2 pode crescer com o nome do status e quebrar numa janela de 380px;
+se isso acontecer, encurtar o texto do botão antes de tentar outra coisa.
 
 Antes de qualquer mudança visível de UI: mostrar um preview (mockup) e
 esperar aprovação antes de mexer no código de verdade — o usuário gosta de
