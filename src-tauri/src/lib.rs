@@ -144,6 +144,12 @@ pub fn run() {
             sql: include_str!("../migrations/0003_status_type.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "task description column",
+            sql: include_str!("../migrations/0004_description.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
