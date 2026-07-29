@@ -145,6 +145,14 @@ export function relTime(ms: number, now: Date = new Date()): string {
   return new Date(ms).toLocaleString();
 }
 
+/**
+ * Descrição pronta pra render: o ClickUp devolve texto puro, então só
+ * normaliza quebras do Windows, colapsa buracos de 3+ linhas e tira as pontas.
+ */
+export function cleanDescription(raw: string): string {
+  return raw.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export interface TaskTree {
   roots: CachedTask[];
   childrenByParent: Map<string, CachedTask[]>;
