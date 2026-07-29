@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { notifyChanged } from "./sync";
 
 /** TTL do cache de tasks: 5 minutos (spec §1.1). */
 export const TASK_TTL_MS = 5 * 60 * 1000;
@@ -108,6 +109,7 @@ export async function cacheTasks(tasks: SyncedTask[], fetchedAt: number): Promis
       ],
     );
   }
+  notifyChanged();
 }
 
 /** Remove do cache as tasks que não vieram no sync atual (`fetched_at` antigo). */
@@ -130,6 +132,7 @@ export async function getCachedTasks(): Promise<CachedTask[]> {
 export async function clearTasks(): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM task_cache");
+  notifyChanged();
 }
 
 /** Timestamp do sync mais recente (max fetched_at), ou null se vazio. */
@@ -154,6 +157,7 @@ export async function addComment(
      VALUES ($1, $2, $3, $4, $5)`,
     [crypto.randomUUID(), subjectId, subjectKind, body, Date.now()],
   );
+  notifyChanged();
 }
 
 export async function listComments(subjectId: string): Promise<Comment[]> {
@@ -167,6 +171,7 @@ export async function listComments(subjectId: string): Promise<Comment[]> {
 export async function deleteComment(id: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM comment WHERE id = $1", [id]);
+  notifyChanged();
 }
 
 // --- Lembretes ------------------------------------------------------------
@@ -183,6 +188,7 @@ export async function addReminder(
      VALUES ($1, $2, $3, $4, $5, 0, $6)`,
     [crypto.randomUUID(), subjectId, subjectKind, body, remindAt, Date.now()],
   );
+  notifyChanged();
 }
 
 export async function listReminders(subjectId: string): Promise<Reminder[]> {
@@ -196,11 +202,13 @@ export async function listReminders(subjectId: string): Promise<Reminder[]> {
 export async function dismissReminder(id: string): Promise<void> {
   const db = await getDb();
   await db.execute("UPDATE reminder SET dismissed = 1 WHERE id = $1", [id]);
+  notifyChanged();
 }
 
 export async function deleteReminder(id: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM reminder WHERE id = $1", [id]);
+  notifyChanged();
 }
 
 /** Ids de assunto com pelo menos um lembrete vencido e não dispensado. */
@@ -261,6 +269,7 @@ export async function updateTaskStatusLocal(
     status,
     statusType,
   ]);
+  notifyChanged();
 }
 
 // --- Foco (pin), spec §1.5 ------------------------------------------------
@@ -281,11 +290,13 @@ export async function pinTask(taskId: string): Promise<void> {
      ON CONFLICT(task_id) DO NOTHING`,
     [taskId, Date.now()],
   );
+  notifyChanged();
 }
 
 export async function unpinTask(taskId: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM focus WHERE task_id = $1", [taskId]);
+  notifyChanged();
 }
 
 /** Persiste a ordem manual do foco (posição = índice no array). */
@@ -294,4 +305,5 @@ export async function setFocusOrder(orderedIds: string[]): Promise<void> {
   for (let i = 0; i < orderedIds.length; i++) {
     await db.execute("UPDATE focus SET position = $2 WHERE task_id = $1", [orderedIds[i], i]);
   }
+  notifyChanged();
 }

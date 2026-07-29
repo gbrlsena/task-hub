@@ -551,6 +551,39 @@ button.task-name:hover {
   overflow-y: auto;
 }
 
+/* Texto clicável nunca quebra linha (responsive.md) */
+.desc-detach {
+  white-space: nowrap;
+}
+
+/* Task destacada: sem relevo, é o buraco que a nota deixou */
+.task-ghost {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  background: transparent;
+  border: 1px dashed var(--rule-2);
+  box-shadow: none;
+}
+
+.ghost-name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.ghost-name:hover {
+  background: none;
+  color: var(--ink);
+}
+
 .subtask-list {
   list-style: none;
   margin: 6px 0 0;
