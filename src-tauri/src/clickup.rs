@@ -96,6 +96,8 @@ pub struct TaskDto {
     /// Id da task pai quando esta e uma subtask; None no topo.
     pub parent: Option<String>,
     pub assignees: Vec<i64>,
+    /// Descricao da task. Texto puro: o endpoint nao devolve markdown.
+    pub description: String,
     pub raw: String,
 }
 
@@ -115,6 +117,16 @@ fn parse_task(t: &serde_json::Value) -> Option<TaskDto> {
         .map(|arr| arr.iter().filter_map(|a| a["id"].as_i64()).collect())
         .unwrap_or_default();
 
+    // `description` e `text_content` sao dois recortes do mesmo texto puro;
+    // o primeiro nao-vazio vale. Ausente vira "" (nunca descarta a task).
+    let description = ["description", "text_content"]
+        .iter()
+        .filter_map(|k| t[*k].as_str())
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+
     Some(TaskDto {
         id,
         custom_id: t["custom_id"].as_str().map(str::to_string),
@@ -127,6 +139,7 @@ fn parse_task(t: &serde_json::Value) -> Option<TaskDto> {
         due_date: str_to_i64(&t["due_date"]),
         parent: t["parent"].as_str().map(str::to_string),
         assignees,
+        description,
         raw: t.to_string(),
     })
 }
@@ -507,5 +520,57 @@ mod tests {
         assert_eq!(dto.due_date, None);
         assert_eq!(dto.parent, None);
         assert!(dto.assignees.is_empty());
+    }
+
+    #[test]
+    fn parse_task_extrai_a_descricao() {
+        let t: serde_json::Value = serde_json::from_str(
+            r#"{
+              "id": "abc123",
+              "name": "Com descrição",
+              "status": { "status": "to do", "type": "open" },
+              "description": "  Contexto\n\nTestar o fluxo.  ",
+              "text_content": "Contexto\n\nTestar o fluxo.",
+              "list": { "id": "1", "name": "Backlog" }
+            }"#,
+        )
+        .unwrap();
+
+        let dto = super::parse_task(&t).expect("deve parsear");
+        assert_eq!(dto.description, "Contexto\n\nTestar o fluxo.");
+    }
+
+    #[test]
+    fn parse_task_cai_no_text_content_quando_description_vem_vazia() {
+        let t: serde_json::Value = serde_json::from_str(
+            r#"{
+              "id": "x",
+              "name": "Só text_content",
+              "status": { "status": "to do" },
+              "description": "",
+              "text_content": "Objetivo\nTirar o hardcode.",
+              "list": { "id": "1", "name": "Backlog" }
+            }"#,
+        )
+        .unwrap();
+
+        let dto = super::parse_task(&t).expect("deve parsear");
+        assert_eq!(dto.description, "Objetivo\nTirar o hardcode.");
+    }
+
+    #[test]
+    fn parse_task_sem_descricao_nenhuma_vira_string_vazia() {
+        let t: serde_json::Value = serde_json::from_str(
+            r#"{
+              "id": "y",
+              "name": "Sem nada",
+              "status": { "status": "to do" },
+              "list": { "id": "1", "name": "Backlog" }
+            }"#,
+        )
+        .unwrap();
+
+        let dto = super::parse_task(&t).expect("deve parsear");
+        assert_eq!(dto.description, "");
     }
 }
