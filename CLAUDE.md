@@ -8,33 +8,47 @@ requisitos, contratos de API e critérios de aceite.
 ## Regras duras (do spec, não flexibilizar)
 
 - **Nenhuma chamada HTTP direto do frontend.** Todo request externo
-  (ClickUp, Anthropic, GitHub) passa por um `#[tauri::command]` em Rust.
+  (ClickUp, Anthropic, GitHub, Slack) passa por um `#[tauri::command]` em Rust.
 - **Nunca hardcodar strings de status** em código de escrita (`"concluída"`,
-  `"complete"`, etc.). Resolver dinamicamente via `GET /list/{id}` e o campo
-  `type` (`open|custom|closed|done`) — ver `src-tauri/src/clickup.rs`.
-- **Nenhuma escrita no ClickUp sem ação explícita do usuário.** Sugestões da
-  IA (Fase 2) nunca se aplicam sozinhas; `confianca: baixa` não mostra botão
-  de ação; a evidência é sempre visível antes de confirmar.
+  `"complete"`, etc.). Resolver dinamicamente: no ClickUp via `GET /list/{id}` e
+  o campo `type` (`open|custom|closed|done`); na Slack List via
+  `list_metadata.schema` do `files.info` — ver `clickup.rs` e `slack.rs`.
+- **Nenhuma escrita sem ação explícita do usuário**, em nenhuma das fontes.
+  Sugestões da IA (Fase 2) nunca se aplicam sozinhas; `confianca: baixa` não
+  mostra botão de ação; a evidência é sempre visível antes de confirmar.
+- **A Slack List de bugs é compartilhada com toda a empresa.** Diferente do
+  board do ClickUp, escrever ali afeta o fluxo do `#bugs` inteiro. Só a troca de
+  status escreve, por clique, e a coluna e a opção são revalidadas **no momento
+  da escrita** — se alguém renomear no Slack, falha em vez de gravar errado.
 - **Segredos só no keyring do SO**, nunca em arquivo, `.env`, log ou
-  localStorage. Ver `src-tauri/src/secret.rs` — 3 contas: `clickup_personal_token`,
-  `anthropic_api_key`, `github_token`, service `task-hub`.
+  localStorage. Ver `src-tauri/src/secret.rs` — 4 contas:
+  `clickup_personal_token`, `anthropic_api_key`, `github_token`, `slack_token`,
+  service `task-hub`. Todos entram pela tela de conexões (rodapé → "conexões").
 - Ordem manual do "foco" é local e **nunca** sincroniza de volta pro ClickUp
   (mexeria numa view compartilhada).
 - Sync é sempre um único fetch paginado — nunca um request por task
-  (rate limit de 100/min do ClickUp).
+  (rate limit de 100/min do ClickUp; tier 2, 20+/min no Slack).
+- **Não duplicar UI entre as telas.** Status, anotações e foco são componentes
+  compartilhados (`StatusPicker`, `Notes`, `FocoItem`). Cópias parecidas
+  divergem na prática — já aconteceu e custou um refactor.
 
 ## Stack e onde as coisas moram
 
 - **Rust** (`src-tauri/src/`): dono de todo HTTP (`reqwest`), keyring
   (`secret.rs`), das migrações SQL e das janelas. `clickup.rs` (API ClickUp),
-  `github.rs` (busca de PRs), `ai.rs` (loop de tool-use com a Anthropic),
-  `detach.rs` (janela destacada: label, inventário das abertas, criar/focar).
+  `slack.rs` (Slack List de bugs), `github.rs` (busca de PRs), `ai.rs` (loop de
+  tool-use com a Anthropic), `detach.rs` (janela destacada: label, inventário
+  das abertas, criar/focar).
 - **Frontend** (`src/`): React + TS + Vite. `db.ts` fala com o SQLite
   (`@tauri-apps/plugin-sql`), `api.ts` invoca os commands Tauri, `sprint.ts`/
-  `task.ts` têm a lógica pura (parser de sprint, derivações como `isLate`/
-  `isStale`/`isDone`), testada com vitest. `TaskWindow.tsx` é a tela da janela
-  destacada, `sync.ts` o ping entre janelas, `sticker.ts` o ajuste de altura,
-  `route.ts` a leitura do `?task=`.
+  `task.ts`/`bug.ts` têm a lógica pura (parser de sprint, derivações como
+  `isLate`/`isStale`/`isDone`, agrupamento e tints dos bugs), testada com
+  vitest. `TaskWindow.tsx` é a tela da janela destacada, `sync.ts` o ping entre
+  janelas, `sticker.ts` o ajuste de altura, `route.ts` a leitura do `?task=`.
+- **Componentes compartilhados pelas duas fontes**: `StatusPicker.tsx` (pill +
+  dropdown de status), `Notes.tsx` (anotações e lembretes por `subject_kind`),
+  `FocoItem.tsx` (item arrastável do "Meu foco"). `TaskCard.tsx` é o cartão do
+  ClickUp e `BugQueue.tsx` a fila de bugs; os dois consomem os três acima.
 - SQLite local via `tauri-plugin-sql`; migrações em `src-tauri/migrations/`,
   numeradas e cumulativas — nunca editar uma migração já commitada, sempre
   adicionar uma nova. Editar uma já aplicada quebra o app: ver as armadilhas
@@ -42,6 +56,51 @@ requisitos, contratos de API e critérios de aceite.
 - **Capabilities**: `src-tauri/capabilities/default.json` lista
   `["main", "task-*"]`. Janela cujo label não casa com esses padrões nasce sem
   permissão nenhuma e o `plugin-sql` dela falha calado.
+
+## Slack: a fila de bugs (segunda fonte do hub)
+
+O canal `#bugs` **não** é a fonte. Cada post lá é do bot "Formulário de
+submissão de bugs" e carrega só quem abriu, prioridade, time e um link — sem
+título, status nem responsável. O conteúdo real mora na Slack List
+**"Solicitações — Bugs"** (`F08NTEW4H3R`), e é dela que o app lê.
+
+- **Escopos** no User OAuth Token (`xoxp-`, nunca bot `xoxb-`): `lists:read`
+  (itens), `files:read` (schema e export), `lists:write` (gravar status).
+  `users:read` é opcional — sem ele o autor aparece como id (`U08NTN41WM8`) em
+  vez de nome, e o sync avisa. Lists exige workspace em plano pago.
+- **Uma List é um arquivo.** O schema (nomes de coluna, tipos e rótulos dos
+  `select`) vem do `files.info` → `list_metadata.schema`. O `items.list` **não**
+  traz schema: devolve `select` como id opaco (`OptYYB79DT0`).
+- **Qual coluna é o quê**: os tipados saem do `type` do schema e são
+  inequívocos (`user` = Responsável, `created_by` = Autor, `created_time`,
+  `date`, `number`, `attachment`, `text` primário = título). Só os `select`
+  casam por nome — menos o **Status**, que sai do `grouping.group_by` da view
+  padrão da List, em vez de ser adivinhado.
+- A fila filtra por Responsável **localmente**: a API não filtra por campo,
+  então é um fetch paginado da List inteira e o filtro no lado Rust.
+
+### Três armadilhas do payload (todas com teste de regressão)
+
+Não são hipotéticas — cada uma custou uma iteração:
+
+- **`key` ≠ `column_id`.** O item traz `key`; o `items.update` exige
+  `column_id`. Gravar usando o `key` escreve na coluna errada (ou em nenhuma).
+- **A prop do valor não espelha o `type` da coluna.** Uma coluna
+  `created_by` entrega o valor em **`user`**. Por isso a leitura tenta várias
+  props e cai em `value` no fim, em vez de confiar no tipo declarado.
+- **`column_id` vem antes do valor na ordem do JSON.** Um resumo que pega "o
+  primeiro campo não nulo" mostra o id como se fosse o valor.
+
+A lição que vale para o próximo campo novo: **sondar e despejar o cru antes de
+escrever o parser.** Os botões `diagnosticar` e `schema` no painel de conexões
+existem pra isso e são andaime dev-facing, não feature.
+
+### O que não funciona (já testado, não repetir)
+
+- **Baixar o export CSV** (`slackLists.download.*` ou o `list_csv_download_url`)
+  para descobrir rótulos: a URL responde HTML do app web em vez de CSV. O
+  `reqwest` também descarta o `Authorization` ao seguir redirect entre hosts.
+  Não vale a pena — o `files.info` já dá o schema direto.
 
 ## Design system
 
@@ -82,14 +141,20 @@ hover são instantâneas, sem token), e não há suporte a
 `@media (prefers-reduced-motion: reduce)` em lugar nenhum — vale adicionar
 quando a UI ganhar mais microinterações.
 
-**Espaçamento e camadas** (não implementado, documentando o alvo): o
-hallmark recomenda uma escala 4pt nomeada (`--space-3xs` … `--space-4xl`) em
-vez de px cru, e um z-index de 6 níveis nomeados (`--z-base`, `--z-raised`,
-`--z-dropdown`, `--z-sticky`, `--z-modal`, `--z-toast`, `--z-tooltip`) em vez
-de valores ad hoc tipo `z-index: 9999`. Hoje o `App.css` usa px direto em
-`padding`/`gap` e não tem nenhum `z-index` declarado (não há camadas
-sobrepostas ainda — status-menu e chips de lembrete são os candidatos mais
-próximos de precisar disso). Adotar a escala se/quando isso mudar.
+**Espaçamento** (não implementado, documentando o alvo): o hallmark recomenda
+uma escala 4pt nomeada (`--space-3xs` … `--space-4xl`) em vez de px cru. Hoje o
+`App.css` usa px direto em `padding`/`gap`. Adotar se a UI crescer.
+
+**Camadas** (parcialmente implementado): a escala de z-index nomeada existe
+desde que apareceu a primeira camada sobreposta de verdade — o dropdown de
+status, que precisa sair do fluxo. Declarados: `--z-base: 0`, `--z-raised: 5`
+(casa com o `whileDrag` do arraste do foco) e `--z-dropdown: 50`. Se surgirem
+modal, toast ou tooltip, continuar a escala em vez de inventar número solto.
+**Nunca `z-index: 9999`.**
+
+Nota do porquê o dropdown sai do fluxo: quando o menu de status ficava no fluxo
+dentro da linha `.task-main`, ele disputava largura com o `.task-name` (que é
+`flex: 1`) e esmagava o título em uma palavra por linha.
 
 **Responsivo**: a maior parte de `responsive.md` (breakpoints 320-1920px,
 `srcset`, i18n) não se aplica — a janela é fixa/estreita, não uma página
@@ -167,13 +232,16 @@ python -c "import sqlite3,hashlib,io,os; db=os.path.join(os.environ['APPDATA'],'
 
 ## Testes
 
-- Rust: `cd src-tauri && cargo test` (14 testes) — valida token, parsing de
+- Rust: `cd src-tauri && cargo test` (39 testes) — valida token, parsing de
   task/`/team`, status_type, extração da descrição (com fallback pro
-  `text_content`) e o label da janela destacada.
-- Frontend: `npm test` (vitest, 37 testes) — parser de sprint, agrupamento por
+  `text_content`), o label da janela destacada e, do lado Slack, validação do
+  token/List id, tradução do `ok: false` em erro acionável, mapeamento das
+  colunas pelo schema e as três armadilhas do payload.
+- Frontend: `npm test` (vitest, 59 testes) — parser de sprint, agrupamento por
   sprint, derivações (`isDone`/`isStale`/`isLate`/`computeMetrics`), helpers de
-  lembrete/tempo relativo, `cleanDescription`, `parseTaskParam` e
-  `stickerHeight`.
+  lembrete/tempo relativo, `cleanDescription`, `parseTaskParam`,
+  `stickerHeight` e a lógica de bug (`groupByStatus`, `isEncerrado`,
+  `statusRank`/tints, `bugAge`, `shortProduct`).
 - O que **não** tem teste automatizado: escrita no SQLite (não há harness pro
   plugin), componentes React e o comportamento entre janelas. Isso se verifica
   no `tauri dev`, na mão.
@@ -197,6 +265,12 @@ python -c "import sqlite3,hashlib,io,os; db=os.path.join(os.environ['APPDATA'],'
   `github_search_prs`, contrato JSON com evidência/confiança, aplicação só
   por confirmação explícita. **Cada chamada custa na API da Anthropic.**
 - Reskin de UI na pegada hallmark (tema claro, tokens OKLCH, fontes offline).
+- **Fila de bugs do Slack** (migrações `0005`/`0006`): segunda fonte do hub,
+  alternada por um seletor no cabeçalho. Mostra só os bugs onde você é o
+  Responsável, agrupados por status, com anotações locais, foco (pin) e "criar
+  card no ClickUp" na lista da sprint aberta. Troca de status grava na List.
+  Ver a seção "Slack: a fila de bugs" acima — inclusive o que já foi testado e
+  **não** funciona.
 - Descrição da task (migração `0004`): já vinha no payload do sync e era
   descartada dentro de `raw`, agora é coluna própria. Clicar no **nome** abre
   a gaveta (`.desc-panel`); nome sem descrição não vira botão. Texto puro com
@@ -223,13 +297,18 @@ python -c "import sqlite3,hashlib,io,os; db=os.path.join(os.environ['APPDATA'],'
 - **Modo escuro**: só existe o tema claro atual; os tokens já são variáveis
   CSS, então adicionar um dark seria barato, mas ainda não foi feito.
 - **Etapa F** (empacotamento final): rodamos `tauri build` manual (exe + msi +
-  nsis, hoje na `0.2.0`), mas não há tray icon, as janelas não são
+  nsis, hoje na `0.3.0`), mas não há tray icon, as janelas não são
   always-on-top nem sem-decoração, e não foi testado em Linux. A janela
   destacada seria o candidato natural a virar sticker sem decoração — implica
   desenhar botão de fechar e área de arraste próprios.
 - **Largura da janela destacada** não acompanha o texto (só a altura cola no
   conteúdo). Decisão consciente: largura variável deixa cada sticker com uma
   medida diferente.
+- **Na fila de bugs**: não há janela destacada, nem "perguntar" (o `ask_task` é
+  específico do ClickUp e precisaria de uma tool que leia a List), nem arraste
+  nos cartões dentro dos grupos (só no bloco "Meu foco"). A lista de status que
+  conta como "encerrado" (`SOLUCIONADO`, `NÃO É BUG`, `DUPLICADO`) é ajuste
+  local em `localStorage`, sem UI pra editar.
 
 ## Convenções de commit
 
