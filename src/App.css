@@ -28,6 +28,11 @@
   --lav-bg: oklch(74% 0.16 300 / 0.16);
 
   --focus: oklch(66% 0.18 235);
+
+  /* Camadas nomeadas (hallmark) — só o que existe de fato hoje. */
+  --z-base: 0;
+  --z-raised: 5;
+  --z-dropdown: 50;
   --radius: 12px;
   --radius-card: 14px;
   --shadow-card: 0 10px 26px -18px oklch(23% 0.014 250 / 0.2),
@@ -399,24 +404,81 @@ button.link.danger {
   opacity: 0.55;
 }
 
-.status-menu {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+/*
+ * Dropdown de status. Primeira camada sobreposta do app, então entra aqui a
+ * escala de z-index nomeada que o CLAUDE.md previa para quando isso surgisse —
+ * em vez de um 9999 solto.
+ */
+.status-picker {
+  position: relative;
+  flex: none;
+  display: inline-flex;
 }
 
-.status-opt {
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--rule);
+.status-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 170px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: 0 12px 28px -14px oklch(23% 0.014 250 / 0.28),
+    0 2px 6px oklch(23% 0.014 250 / 0.1);
+}
+
+.status-dropdown-hint {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
   font-weight: 500;
+  text-align: left;
+  color: var(--ink-2);
   cursor: pointer;
 }
 
-.status-opt.current {
-  outline: 2px solid var(--accent-deep);
-  outline-offset: 1px;
+.status-item:hover {
+  background: var(--paper-2);
+}
+
+.status-item.current {
+  color: var(--ink);
+  background: var(--accent-tint);
+}
+
+.status-item-label {
+  flex: 1;
+  min-width: 0;
+  /* Rótulo de status é texto clicável: encurta, nunca quebra linha. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ponto de cor herda o papel semântico do status (coral, ciano, âmbar…). */
+.status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
 }
 
 .link.pinned {
@@ -771,6 +833,247 @@ button.task-name:hover {
   border-radius: var(--radius);
   background: var(--paper-2);
   border: 1px solid var(--rule);
+}
+
+/* Ação secundária de uma credencial (ex.: desconectar), alinhada à direita. */
+.conn-row-aux {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -4px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* --- Fonte ativa: ClickUp vs. fila de bugs -------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.source-switch {
+  display: inline-flex;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.source-switch button {
+  border: 0;
+  background: transparent;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--muted);
+  /* Texto clicável nunca quebra linha (regra do projeto). */
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.source-switch button.is-on {
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* --- Fila de bugs --------------------------------------------------------- */
+/*
+ * O cartão de bug usa `.task-card`, `.pill-row`, `.task-name`, `.task-meta`,
+ * `.status-pill`/`.status-dropdown`, `.task-actions` e `.notes-panel` — os mesmos do
+ * ClickUp. Aqui ficam só as diferenças reais de conteúdo, não um segundo
+ * conjunto paralelo de estilos.
+ */
+
+.bug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bug-head p {
+  /* Some o "· 4 alta" pulando pra segunda linha e colando no botão. */
+  min-width: 0;
+}
+
+.bug-head button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.bug-count-alta {
+  color: var(--danger);
+  white-space: nowrap;
+}
+
+.bug-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/*
+ * Rótulo do grupo: só cor, sem fundo. As classes `.role-*` trazem `background`
+ * porque existem pra pills — no eyebrow elas pintavam uma faixa da largura
+ * toda, que era a "barra vazando".
+ */
+.bug-group-label {
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.bug-group-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.bug-group-label.tint-danger {
+  color: var(--danger);
+}
+.bug-group-label.tint-accent {
+  color: var(--st-accent);
+}
+.bug-group-label.tint-warning {
+  color: var(--warning);
+}
+.bug-group-label.tint-neutral {
+  color: var(--muted);
+}
+
+/* Blocker (IMPEDIDO) ganha borda coral, como atraso no cartão de task. */
+.task-card.is-blocked {
+  border-color: var(--danger);
+}
+
+/* Nome do bug abre a gaveta: é botão, mas tem que parecer o nome da task. */
+.bug-name {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.bug-name.is-plain {
+  cursor: default;
+}
+
+.bug-desc {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  /*
+   * `pre-wrap` sozinho não quebra palavra sem espaço: a URL do Konsigleads
+   * numa linha só estourava o cartão e criava scroll horizontal na janela.
+   */
+  overflow-wrap: anywhere;
+}
+
+/* Produto pode ter nome longo: corta com reticências em vez de quebrar. */
+.pill-row .pill {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bug-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bug-fields dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: center;
+}
+
+.bug-fields dd {
+  overflow-wrap: anywhere;
+}
+
+.bug-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bug-fields dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: center;
+}
+
+.bug-fields dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* Diagnóstico da List do Slack — andaime da fase de mapeamento das colunas. */
+.diag {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+}
+
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.diag-row .mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-dump {
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  overflow-x: auto;
+  white-space: pre;
 }
 
 /* Painel "perguntar" (Fase 2) */

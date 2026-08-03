@@ -3,9 +3,10 @@ mod clickup;
 mod detach;
 mod github;
 mod secret;
+mod slack;
 
 use ai::AskResult;
-use clickup::{FolderRef, StatusDef, TaskDto, Team};
+use clickup::{CreatedTask, FolderRef, StatusDef, TaskDto, Team};
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -115,6 +116,90 @@ fn clear_github_token() -> Result<(), String> {
     secret::clear(secret::GITHUB)
 }
 
+// --- Slack: fila de bugs ---------------------------------------------------
+
+#[tauri::command]
+fn slack_status() -> Result<bool, String> {
+    Ok(secret::read(secret::SLACK)?.is_some())
+}
+
+#[tauri::command]
+fn save_slack_token(token: String) -> Result<(), String> {
+    let token = slack::validate_token(&token)?;
+    secret::store(secret::SLACK, token)
+}
+
+#[tauri::command]
+fn clear_slack_token() -> Result<(), String> {
+    secret::clear(secret::SLACK)
+}
+
+/// Diagnóstico da List de bugs: quem é o dono do token e quais campos os
+/// registros trazem. Passo zero — sem isso não há como mapear as colunas
+/// (responsável, status, prioridade) sem chutar.
+#[tauri::command]
+async fn slack_diagnose(list: String) -> Result<serde_json::Value, String> {
+    let token = secret::read(secret::SLACK)?
+        .ok_or_else(|| "Nenhum token do Slack salvo (xoxp-).".to_string())?;
+    let list_id = slack::parse_list_id(&list)
+        .ok_or_else(|| "Nao reconheci um id ou URL de List do Slack.".to_string())?;
+    slack::diagnose(&token, &list_id).await
+}
+
+/// Nomes das colunas e rótulos dos select da List. Vem do `files.info`
+/// (`files:read`), único lugar que traduz os ids opacos `Opt…`.
+#[tauri::command]
+async fn slack_schema(list: String) -> Result<serde_json::Value, String> {
+    let token = secret::read(secret::SLACK)?
+        .ok_or_else(|| "Nenhum token do Slack salvo (xoxp-).".to_string())?;
+    let list_id = slack::parse_list_id(&list)
+        .ok_or_else(|| "Nao reconheci um id ou URL de List do Slack.".to_string())?;
+    slack::schema(&token, &list_id).await
+}
+
+/// Fila de bugs da Slack List onde você é o Responsável. Um fetch paginado da
+/// List inteira + filtro local (a API não filtra por campo).
+#[tauri::command]
+async fn sync_bugs(list: String) -> Result<serde_json::Value, String> {
+    let token = secret::read(secret::SLACK)?
+        .ok_or_else(|| "Nenhum token do Slack salvo (xoxp-).".to_string())?;
+    let list_id = slack::parse_list_id(&list)
+        .ok_or_else(|| "Nao reconheci um id ou URL de List do Slack.".to_string())?;
+    slack::sync_bugs(&token, &list_id).await
+}
+
+/// Opções da coluna de status da List, carregadas ao abrir o menu.
+#[tauri::command]
+async fn bug_status_options(list: String) -> Result<serde_json::Value, String> {
+    let token = secret::read(secret::SLACK)?
+        .ok_or_else(|| "Nenhum token do Slack salvo (xoxp-).".to_string())?;
+    let list_id = slack::parse_list_id(&list)
+        .ok_or_else(|| "Nao reconheci um id ou URL de List do Slack.".to_string())?;
+    slack::status_options(&token, &list_id).await
+}
+
+/// Grava o status do bug na Slack List. Exige `lists:write`. Ação explícita:
+/// nunca chamado por sync nem por sugestão de IA.
+#[tauri::command]
+async fn set_bug_status(list: String, bug_id: String, option_id: String) -> Result<(), String> {
+    let token = secret::read(secret::SLACK)?
+        .ok_or_else(|| "Nenhum token do Slack salvo (xoxp-).".to_string())?;
+    let list_id = slack::parse_list_id(&list)
+        .ok_or_else(|| "Nao reconheci um id ou URL de List do Slack.".to_string())?;
+    slack::set_bug_status(&token, &list_id, &bug_id, &option_id).await
+}
+
+/// Cria uma task no ClickUp a partir de um bug. O `list_id` é a sprint que o hub
+/// está mostrando — quem decide é a UI, não este command.
+#[tauri::command]
+async fn create_task_from_bug(
+    list_id: String,
+    name: String,
+    description: String,
+) -> Result<CreatedTask, String> {
+    clickup::create_task(&clickup_token()?, &list_id, &name, &description).await
+}
+
 /// Verificação via Claude (Fase 2). Lê as credenciais do cofre.
 #[tauri::command]
 async fn ask_task(task_id: String, question: String) -> Result<AskResult, String> {
@@ -168,6 +253,18 @@ pub fn run() {
             sql: include_str!("../migrations/0004_description.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "bug cache from slack list",
+            sql: include_str!("../migrations/0005_bugs.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "focus kind so bugs can be pinned too",
+            sql: include_str!("../migrations/0006_focus_kind.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -200,6 +297,15 @@ pub fn run() {
             github_status,
             save_github_token,
             clear_github_token,
+            slack_status,
+            save_slack_token,
+            clear_slack_token,
+            slack_diagnose,
+            slack_schema,
+            sync_bugs,
+            bug_status_options,
+            set_bug_status,
+            create_task_from_bug,
             ask_task,
             open_task_window,
             detached_task_ids

@@ -383,6 +383,56 @@ pub async fn set_task_status(token: &str, task_id: &str, status: &str) -> Result
     })
 }
 
+/// Task recém-criada: o que a UI precisa pra linkar de volta.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct CreatedTask {
+    pub id: String,
+    pub url: String,
+}
+
+/// `POST /api/v2/list/{list_id}/task` — cria uma task. Sem status no corpo: a
+/// list decide o inicial, e mandar string fixa aqui quebraria a regra de nunca
+/// hardcodar status. Escrita só por ação explícita do usuário.
+pub async fn create_task(
+    token: &str,
+    list_id: &str,
+    name: &str,
+    description: &str,
+) -> Result<CreatedTask, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("A task precisa de um nome.".into());
+    }
+
+    let resp = reqwest::Client::new()
+        .post(format!("{API_BASE}/list/{list_id}/task"))
+        .header("Authorization", token)
+        .json(&serde_json::json!({ "name": name, "description": description }))
+        .send()
+        .await
+        .map_err(|e| format!("Falha de rede ao criar a task: {e}"))?;
+
+    let code = resp.status();
+    if !code.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(match code.as_u16() {
+            401 => "Token do ClickUp invalido ou sem permissao (HTTP 401).".to_string(),
+            404 => format!("Lista {list_id} nao encontrada no ClickUp (HTTP 404)."),
+            _ => format!("ClickUp recusou a criacao (HTTP {code}): {body}"),
+        });
+    }
+
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada do ClickUp: {e}"))?;
+
+    Ok(CreatedTask {
+        id: v["id"].as_str().unwrap_or_default().to_string(),
+        url: v["url"].as_str().unwrap_or_default().to_string(),
+    })
+}
+
 /// Resumo de uma task para a Fase 2: status, assignees, due_date e comentários
 /// recentes. Retorna JSON compacto pronto pra virar tool_result.
 pub async fn get_task_summary(token: &str, task_id: &str) -> Result<serde_json::Value, String> {
