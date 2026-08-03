@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Reorder, useDragControls } from "framer-motion";
+import { Reorder } from "framer-motion";
 import {
   anthropicStatus,
   clearToken,
@@ -8,10 +8,16 @@ import {
   githubStatus,
   saveAnthropicKey,
   saveGithubToken,
+  saveSlackToken,
   saveToken,
+  slackDiagnose,
+  slackSchema,
+  slackStatus,
   syncOpenTasks,
   tokenStatus,
   type FolderRef,
+  type SlackDiagnosis,
+  type SlackSchema,
 } from "./api";
 import {
   cacheTasks,
@@ -38,12 +44,17 @@ import {
   type FilterKind,
 } from "./task";
 import TaskCard from "./TaskCard";
+import BugQueue from "./BugQueue";
+import FocoItem from "./FocoItem";
 import "./App.css";
 
 type Screen = { kind: "loading" } | { kind: "token" } | { kind: "board" };
 
 const DEFAULT_FOLDER_ID = "90118026854";
+/** Slack List "Solicitações — Bugs" do canal #bugs. */
+const BUGS_LIST_ID = "F08NTEW4H3R";
 const FOLDER_KEY = "taskhub.folderId";
+const SOURCE_KEY = "taskhub.source";
 
 function loadFolderId(): string {
   return localStorage.getItem(FOLDER_KEY) ?? DEFAULT_FOLDER_ID;
@@ -90,9 +101,49 @@ function App() {
   const [connOpen, setConnOpen] = useState(false);
   const [anthropicOn, setAnthropicOn] = useState(false);
   const [githubOn, setGithubOn] = useState(false);
+  const [ckInput, setCkInput] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [ghInput, setGhInput] = useState("");
   const [connError, setConnError] = useState<string | null>(null);
+
+  // Slack: fila de bugs. O diagnóstico é andaime da fase de mapeamento das
+  // colunas da List — sai daqui quando o cartão da fila existir.
+  const [slackOn, setSlackOn] = useState(false);
+  const [slackInput, setSlackInput] = useState("");
+  const [listInput, setListInput] = useState(BUGS_LIST_ID);
+  const [diagnosis, setDiagnosis] = useState<SlackDiagnosis | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [schema, setSchema] = useState<SlackSchema | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+
+  // Fonte ativa do hub: board do ClickUp ou fila de bugs do Slack. Local, o
+  // usuário alterna; nada do ClickUp é perdido ao trocar.
+  const [source, setSource] = useState<"clickup" | "bugs">(
+    () => (localStorage.getItem(SOURCE_KEY) === "bugs" ? "bugs" : "clickup"),
+  );
+
+  useEffect(() => {
+    localStorage.setItem(SOURCE_KEY, source);
+  }, [source]);
+
+  /**
+   * Troca o token do ClickUp sem sair da tela. O cache de tasks é esvaziado:
+   * outro token pode ser outra conta, e mostrar tasks do escopo anterior seria
+   * mentira até o próximo sync.
+   */
+  async function saveClickup() {
+    setConnError(null);
+    try {
+      await saveToken(ckInput);
+      setCkInput("");
+      await clearTasks();
+      setTasks([]);
+      setLastSync(null);
+      setSyncError(null);
+    } catch (e) {
+      setConnError(String(e));
+    }
+  }
 
   async function saveKey() {
     setConnError(null);
@@ -113,6 +164,43 @@ function App() {
       setGithubOn(true);
     } catch (e) {
       setConnError(String(e));
+    }
+  }
+
+  async function saveSlack() {
+    setConnError(null);
+    try {
+      await saveSlackToken(slackInput);
+      setSlackInput("");
+      setSlackOn(true);
+    } catch (e) {
+      setConnError(String(e));
+    }
+  }
+
+  async function runSchema() {
+    setConnError(null);
+    setSchemaLoading(true);
+    try {
+      setSchema(await slackSchema(listInput));
+    } catch (e) {
+      setSchema(null);
+      setConnError(String(e));
+    } finally {
+      setSchemaLoading(false);
+    }
+  }
+
+  async function runDiagnose() {
+    setConnError(null);
+    setDiagnosing(true);
+    try {
+      setDiagnosis(await slackDiagnose(listInput));
+    } catch (e) {
+      setDiagnosis(null);
+      setConnError(String(e));
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -199,6 +287,7 @@ function App() {
 
     anthropicStatus().then((v) => alive && setAnthropicOn(v)).catch(() => {});
     githubStatus().then((v) => alive && setGithubOn(v)).catch(() => {});
+    slackStatus().then((v) => alive && setSlackOn(v)).catch(() => {});
 
     return () => {
       alive = false;
@@ -357,8 +446,36 @@ function App() {
     <main className="app">
       <header className="app-header">
         <h1>Task Hub</h1>
+        <div className="source-switch" role="tablist" aria-label="Fonte">
+          <button
+            role="tab"
+            aria-selected={source === "clickup"}
+            className={source === "clickup" ? "is-on" : ""}
+            onClick={() => setSource("clickup")}
+          >
+            ClickUp
+          </button>
+          <button
+            role="tab"
+            aria-selected={source === "bugs"}
+            className={source === "bugs" ? "is-on" : ""}
+            onClick={() => setSource("bugs")}
+          >
+            Bugs
+          </button>
+        </div>
       </header>
 
+      {source === "bugs" ? (
+        <BugQueue
+          listId={listInput}
+          slackOn={slackOn}
+          onOpenSettings={() => setConnOpen(true)}
+          sprintListId={current?.tasks[0]?.list_id ?? ""}
+          sprintName={current?.tasks[0]?.list_name ?? "a sprint atual"}
+        />
+      ) : (
+        <>
       <section className="board-bar">
         <div className="board-id">
           <span className="eyebrow">Board</span>
@@ -515,19 +632,44 @@ function App() {
         </>
       )}
 
+        </>
+      )}
+
       <footer className="app-footer">
         <div className="footer-row">
-          <button className="link" onClick={handleChangeToken}>
-            Trocar token
-          </button>
           <button className="link" onClick={() => setConnOpen((v) => !v)}>
             conexões {anthropicOn ? "· Claude ✓" : ""}
             {githubOn ? " · GitHub ✓" : ""}
+            {slackOn ? " · Slack ✓" : ""}
           </button>
         </div>
 
         {connOpen && (
           <div className="conn-panel">
+            {/* ClickUp primeiro: é a credencial que o app exige pra funcionar. */}
+            <label className="eyebrow">Token do ClickUp</label>
+            <div className="composer">
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="conectado — cole para trocar"
+                value={ckInput}
+                onChange={(e) => setCkInput(e.currentTarget.value)}
+              />
+              <button
+                className="composer-icon"
+                onClick={saveClickup}
+                disabled={ckInput.trim() === ""}
+              >
+                salvar
+              </button>
+            </div>
+            <div className="conn-row-aux">
+              <button className="link danger" onClick={handleChangeToken}>
+                desconectar
+              </button>
+            </div>
+
             <label className="eyebrow">Chave da API Anthropic</label>
             <div className="composer">
               <input
@@ -556,6 +698,112 @@ function App() {
               </button>
             </div>
 
+            <label className="eyebrow">Token do Slack (fila de bugs)</label>
+            <div className="composer">
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={slackOn ? "conectado — cole para trocar" : "xoxp-…"}
+                value={slackInput}
+                onChange={(e) => setSlackInput(e.currentTarget.value)}
+              />
+              <button
+                className="composer-icon"
+                onClick={saveSlack}
+                disabled={slackInput.trim() === ""}
+              >
+                salvar
+              </button>
+            </div>
+
+            <label className="eyebrow">List de bugs</label>
+            <div className="composer">
+              <input
+                className="mono"
+                type="text"
+                autoComplete="off"
+                placeholder="F… ou a URL da List"
+                value={listInput}
+                onChange={(e) => setListInput(e.currentTarget.value)}
+              />
+              <button
+                className="composer-icon"
+                onClick={runDiagnose}
+                disabled={!slackOn || diagnosing || listInput.trim() === ""}
+              >
+                {diagnosing ? "lendo…" : "diagnosticar"}
+              </button>
+              <button
+                className="composer-icon"
+                onClick={runSchema}
+                disabled={!slackOn || schemaLoading || listInput.trim() === ""}
+              >
+                {schemaLoading ? "exportando…" : "schema"}
+              </button>
+            </div>
+
+            {schema && (
+              <div className="diag">
+                <p className="diag-row">
+                  <span className="muted">linhas · arquivadas</span>
+                  <span className="mono">
+                    {schema.linhas ?? "—"} · {schema.arquivadas ?? "—"}
+                  </span>
+                </p>
+                <p className="diag-row">
+                  <span className="muted">coluna de status</span>
+                  <span className="mono">{schema.coluna_de_status || "—"}</span>
+                </p>
+                <label className="eyebrow">colunas ({schema.colunas.length})</label>
+                <pre className="diag-dump">
+                  {schema.colunas
+                    .map((c) => {
+                      const rotulos = Object.entries(c.opcoes);
+                      const lista = rotulos.length
+                        ? `\n  ${rotulos.map(([id, label]) => `${id} → ${label}`).join("\n  ")}`
+                        : "";
+                      const marca = c.key === schema.coluna_de_status ? " ← status" : "";
+                      return `${c.nome || "(sem nome)"} · ${c.tipo} · ${c.key}${marca}${lista}`;
+                    })
+                    .join("\n")}
+                </pre>
+              </div>
+            )}
+
+            {diagnosis && (
+              <div className="diag">
+                <p className="diag-row">
+                  <span className="muted">você</span>
+                  <span className="mono">{diagnosis.auth.user_id}</span>
+                </p>
+                <p className="diag-row">
+                  <span className="muted">itens na página</span>
+                  <span className="mono">{diagnosis.itens_na_pagina}</span>
+                </p>
+                <p className="diag-row">
+                  <span className="muted">próxima página</span>
+                  <span className="mono">{diagnosis.tem_proxima_pagina ? "sim" : "não"}</span>
+                </p>
+                <label className="eyebrow">campos encontrados</label>
+                {diagnosis.campos.length === 0 ? (
+                  <p className="hint">
+                    Nenhum campo veio preenchido — provavelmente falta o escopo `files:read`.
+                  </p>
+                ) : (
+                  <pre className="diag-dump">
+                    {diagnosis.campos
+                      .map(
+                        (c) =>
+                          `${c.key} · ${c.tipos.join(", ") || "vazio na amostra"}\n  ${JSON.stringify(
+                            c.valores,
+                          )}`,
+                      )
+                      .join("\n")}
+                  </pre>
+                )}
+              </div>
+            )}
+
             {connError && <p className="error">{connError}</p>}
             <p className="hint">
               Guardadas no cofre do SO, nunca em arquivo ou log. A verificação chama a API da
@@ -565,31 +813,6 @@ function App() {
         )}
       </footer>
     </main>
-  );
-}
-
-/** Item arrastável do "Meu foco" — alça dedicada + animação de mola. */
-function FocoItem({ id, children }: { id: string; children: React.ReactNode }) {
-  const controls = useDragControls();
-  return (
-    <Reorder.Item
-      value={id}
-      as="div"
-      className="foco-item"
-      dragListener={false}
-      dragControls={controls}
-      whileDrag={{ scale: 1.015, zIndex: 5 }}
-      transition={{ type: "spring", stiffness: 500, damping: 40 }}
-    >
-      <button
-        className="drag-grip"
-        aria-label="arrastar para reordenar"
-        onPointerDown={(e) => controls.start(e)}
-      >
-        ⠿
-      </button>
-      <div className="foco-item-body">{children}</div>
-    </Reorder.Item>
   );
 }
 

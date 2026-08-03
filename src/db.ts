@@ -1,5 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 import { notifyChanged } from "./sync";
+import type { Bug } from "./bug";
 
 /** TTL do cache de tasks: 5 minutos (spec §1.1). */
 export const TASK_TTL_MS = 5 * 60 * 1000;
@@ -7,7 +8,18 @@ export const TASK_TTL_MS = 5 * 60 * 1000;
 /** Limite pra rotular o cache como "desatualizado" na UI: 12h sem sync. */
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 
-export type SubjectKind = "task" | "note";
+/**
+ * Domínio do pin. A tabela `focus` guarda os dois; sem `kind` a lista de
+ * fixados do hub e a da fila de bugs se misturariam (migração 0006).
+ */
+export type FocusKind = "task" | "bug";
+
+/**
+ * `bug` reusa as tabelas `comment`/`reminder`: a coluna `subject_kind` é TEXT
+ * livre (migração 0002, sem CHECK), então anotar um bug funciona sem alterar
+ * tabela existente.
+ */
+export type SubjectKind = "task" | "note" | "bug";
 
 /** Task como devolvida pelo command Rust `sync_open_tasks`. */
 export interface SyncedTask {
@@ -144,6 +156,97 @@ export async function lastFetchedAt(): Promise<number | null> {
   return rows[0]?.t ?? null;
 }
 
+// --- Cache de bugs (Slack List) -------------------------------------------
+
+const CAMPOS_BUG =
+  "id, name, description, status, priority, product, team, category, origin, " +
+  "author, author_name, assignee, created_at, finished_at, cases, attachments, permalink";
+
+/** Upsert dos bugs no `bug_cache`, carimbando `fetched_at`. */
+export async function cacheBugs(
+  bugs: Bug[],
+  listId: string,
+  fetchedAt: number,
+): Promise<void> {
+  const db = await getDb();
+  for (const b of bugs) {
+    await db.execute(
+      `INSERT INTO bug_cache
+         (id, list_id, name, description, status, priority, product, team, category, origin,
+          author, author_name, assignee, created_at, finished_at, cases, attachments, permalink, raw, fetched_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       ON CONFLICT(id) DO UPDATE SET
+         list_id = excluded.list_id,
+         name = excluded.name,
+         description = excluded.description,
+         status = excluded.status,
+         priority = excluded.priority,
+         product = excluded.product,
+         team = excluded.team,
+         category = excluded.category,
+         origin = excluded.origin,
+         author = excluded.author,
+         author_name = excluded.author_name,
+         assignee = excluded.assignee,
+         created_at = excluded.created_at,
+         finished_at = excluded.finished_at,
+         cases = excluded.cases,
+         attachments = excluded.attachments,
+         permalink = excluded.permalink,
+         raw = excluded.raw,
+         fetched_at = excluded.fetched_at`,
+      [
+        b.id,
+        listId,
+        b.name,
+        b.description,
+        b.status,
+        b.priority,
+        b.product,
+        b.team,
+        b.category,
+        b.origin,
+        b.author,
+        b.author_name,
+        b.assignee,
+        b.created_at,
+        b.finished_at,
+        b.cases,
+        b.attachments,
+        b.permalink,
+        JSON.stringify(b),
+        fetchedAt,
+      ],
+    );
+  }
+  notifyChanged();
+}
+
+/**
+ * Remove os bugs que não vieram no sync atual. Diferente das tasks, isso é
+ * esperado com frequência: o bug sai da fila quando o Responsável muda no
+ * Slack, e não deve ficar preso aqui.
+ */
+export async function pruneStaleBugs(syncedAt: number): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM bug_cache WHERE fetched_at < $1", [syncedAt]);
+}
+
+export async function getCachedBugs(): Promise<Bug[]> {
+  const db = await getDb();
+  return db.select<Bug[]>(
+    `SELECT ${CAMPOS_BUG} FROM bug_cache ORDER BY created_at IS NULL, created_at DESC`,
+  );
+}
+
+export async function lastBugFetchedAt(): Promise<number | null> {
+  const db = await getDb();
+  const rows = await db.select<{ t: number | null }[]>(
+    "SELECT MAX(fetched_at) AS t FROM bug_cache",
+  );
+  return rows[0]?.t ?? null;
+}
+
 // --- Comentários (log privado) -------------------------------------------
 
 export async function addComment(
@@ -274,21 +377,22 @@ export async function updateTaskStatusLocal(
 
 // --- Foco (pin), spec §1.5 ------------------------------------------------
 
-export async function getPinnedIds(): Promise<string[]> {
+export async function getPinnedIds(kind: FocusKind = "task"): Promise<string[]> {
   const db = await getDb();
   const rows = await db.select<{ task_id: string }[]>(
-    "SELECT task_id FROM focus ORDER BY position, pinned_at",
+    "SELECT task_id FROM focus WHERE kind = $1 ORDER BY position, pinned_at",
+    [kind],
   );
   return rows.map((r) => r.task_id);
 }
 
-export async function pinTask(taskId: string): Promise<void> {
+export async function pinTask(taskId: string, kind: FocusKind = "task"): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO focus (task_id, position, pinned_at)
-     VALUES ($1, (SELECT COALESCE(MAX(position), 0) + 1 FROM focus), $2)
+    `INSERT INTO focus (task_id, position, pinned_at, kind)
+     VALUES ($1, (SELECT COALESCE(MAX(position), 0) + 1 FROM focus WHERE kind = $3), $2, $3)
      ON CONFLICT(task_id) DO NOTHING`,
-    [taskId, Date.now()],
+    [taskId, Date.now(), kind],
   );
   notifyChanged();
 }
@@ -300,10 +404,17 @@ export async function unpinTask(taskId: string): Promise<void> {
 }
 
 /** Persiste a ordem manual do foco (posição = índice no array). */
-export async function setFocusOrder(orderedIds: string[]): Promise<void> {
+export async function setFocusOrder(
+  orderedIds: string[],
+  kind: FocusKind = "task",
+): Promise<void> {
   const db = await getDb();
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.execute("UPDATE focus SET position = $2 WHERE task_id = $1", [orderedIds[i], i]);
+    await db.execute("UPDATE focus SET position = $2 WHERE task_id = $1 AND kind = $3", [
+      orderedIds[i],
+      i,
+      kind,
+    ]);
   }
   notifyChanged();
 }

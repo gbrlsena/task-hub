@@ -12,6 +12,7 @@ const SERVICE: &str = "task-hub";
 pub const CLICKUP: &str = "clickup_personal_token";
 pub const ANTHROPIC: &str = "anthropic_api_key";
 pub const GITHUB: &str = "github_token";
+pub const SLACK: &str = "slack_token";
 
 fn entry(account: &str) -> Result<Entry, String> {
     Entry::new(SERVICE, account).map_err(|e| format!("Falha ao abrir o cofre: {e}"))
