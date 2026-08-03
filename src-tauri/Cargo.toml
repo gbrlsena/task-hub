@@ -1,6 +1,6 @@
 [package]
 name = "task-hub"
-version = "0.2.0"
+version = "0.3.0"
 description = "Task Hub - notas autoadesivas com integracao ClickUp"
 authors = ["Gabriel Sena"]
 edition = "2021"
